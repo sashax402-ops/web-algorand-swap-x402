@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>EasySwap — best route, visible fee</title>
+<title>ChepeastSwap — The Chepeast Swap</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -63,6 +63,12 @@
     font-variant-numeric: tabular-nums;
   }
   .amount-input::placeholder{color:#4A5058;}
+  .mode-toggle{
+    margin-top:8px; background:none; border:1px solid var(--border); border-radius:999px;
+    padding:4px 10px; font-size:12px; color:var(--muted); cursor:pointer;
+    font-family:'IBM Plex Mono', monospace; display:inline-flex; align-items:center; gap:5px;
+  }
+  .mode-toggle:hover{border-color:var(--accent-dim); color:var(--text);}
   select.token-select{
     background:var(--panel); border:1px solid var(--border); border-radius:999px;
     padding:8px 12px; font-size:13px; color:var(--text); white-space:nowrap; cursor:pointer;
@@ -105,7 +111,7 @@
       <path d="M3 10h15m0 0-5-5m5 5-5 5" stroke="#5FBF95" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
       <path d="M23 16H8m0 0 5-5m-5 5 5 5" stroke="#EDEEF0" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
-    <span class="wordmark">Easy<b>Swap</b></span>
+    <span class="wordmark">Chepeast<b>Swap</b></span>
   </div>
   <div class="brand-right">
     <div class="langs" id="langs">
@@ -122,14 +128,16 @@
     </div>
   </div>
 </div>
+<p style="max-width:440px; width:100%; color:var(--muted); font-size:12.5px; margin:-6px 0 22px;">The Chepeast Swap</p>
 
 <div class="card">
   <div class="field">
     <label data-i18n="label_send">You send</label>
     <div class="field-row">
-      <input id="fromAmount" class="amount-input" type="text" inputmode="decimal" placeholder="0.0" oninput="scheduleFetchPreview()">
+      <input id="fromAmount" class="amount-input" type="text" inputmode="decimal" placeholder="0.0" oninput="scheduleFetchPreview(); updateSendModeAlt();">
       <select id="fromToken" class="token-select" onchange="onPairChange()"></select>
     </div>
+    <button id="sendModeToggle" class="mode-toggle" onclick="toggleSendMode()">⇅ <span id="sendModeAlt">—</span></button>
   </div>
 
   <div class="swap-toggle"><button onclick="flipDirection()" title="Flip">⇅</button></div>
@@ -199,6 +207,7 @@ const TEXT = {
     err_no_wallet: 'No EVM wallet found in this browser (install MetaMask, Talisman...).',
 
     connect_to_preview: 'Connect your wallet to see a live quote.',
+    no_price: 'No live price for this token right now — switch to token amount.',
     err_unexpected: code => `Unexpected server response (${code})`,
     err_payment_not_confirmed: code => `The server didn't confirm the payment (${code})`,
     err_no_tx: 'This route has no executable transaction.',
@@ -220,6 +229,7 @@ const TEXT = {
     err_no_wallet: 'No encuentro una wallet EVM en este navegador (instala MetaMask, Talisman...).',
 
     connect_to_preview: 'Conecta tu wallet para ver una cotización en vivo.',
+    no_price: 'No tengo precio en vivo de este token ahora mismo — cambia a cantidad en token.',
     err_unexpected: code => `Respuesta inesperada del servidor (${code})`,
     err_payment_not_confirmed: code => `El servidor no confirmó el pago (${code})`,
     err_no_tx: 'Esta ruta no trae una transacción ejecutable.',
@@ -241,6 +251,7 @@ const TEXT = {
     err_no_wallet: 'Aucun portefeuille EVM trouvé dans ce navigateur (installez MetaMask, Talisman...).',
 
     connect_to_preview: 'Connectez votre portefeuille pour voir un devis en direct.',
+    no_price: 'Pas de prix en direct pour ce jeton actuellement — passez au montant en jeton.',
     err_unexpected: code => `Réponse inattendue du serveur (${code})`,
     err_payment_not_confirmed: code => `Le serveur n'a pas confirmé le paiement (${code})`,
     err_no_tx: 'Cet itinéraire ne contient pas de transaction exécutable.',
@@ -262,6 +273,7 @@ const TEXT = {
     err_no_wallet: 'Keine EVM-Wallet in diesem Browser gefunden (installiere MetaMask, Talisman...).',
 
     connect_to_preview: 'Verbinde deine Wallet, um ein Live-Angebot zu sehen.',
+    no_price: 'Gerade kein Live-Preis für diesen Token — wechsle zum Token-Betrag.',
     err_unexpected: code => `Unerwartete Serverantwort (${code})`,
     err_payment_not_confirmed: code => `Der Server hat die Zahlung nicht bestätigt (${code})`,
     err_no_tx: 'Diese Route enthält keine ausführbare Transaktion.',
@@ -293,6 +305,7 @@ document.getElementById('langs').addEventListener('click', (e) => {
 applyLang();
 
 let signer = null, userAddress = null, lastPreview = null;
+let sendMode = 'token', fromPriceUSD = null, priceTokenKey = null;
 let evmProviders = [];
 window.addEventListener('eip6963:announceProvider', (e) => {
   if (!evmProviders.find(p => p.info.uuid === e.detail.info.uuid)) evmProviders.push(e.detail);
@@ -314,7 +327,46 @@ function currentPair(selectId) {
   return TOKENS.find(x => x.key === document.getElementById(selectId).value);
 }
 
-function onPairChange() { scheduleFetchPreview(); }
+function onPairChange() { scheduleFetchPreview(); updateSendModeAlt(); }
+
+// ---- Conversor $ <-> token en "Envías", con el precio real de LI.FI -----
+async function ensureFromPrice() {
+  const from = currentPair('fromToken');
+  const key = `${from.chainId}:${from.address}`;
+  if (priceTokenKey === key && fromPriceUSD != null) return fromPriceUSD;
+  try {
+    const resp = await fetch(`${BACKEND_URL}/price?chain=${from.chainId}&token=${from.address}`);
+    if (!resp.ok) throw new Error();
+    const data = await resp.json();
+    fromPriceUSD = Number(data.price_usd) || null;
+    priceTokenKey = key;
+  } catch { fromPriceUSD = null; priceTokenKey = null; }
+  return fromPriceUSD;
+}
+
+async function updateSendModeAlt() {
+  const price = await ensureFromPrice();
+  const amountStr = document.getElementById('fromAmount').value;
+  const alt = document.getElementById('sendModeAlt');
+  if (!price || !amountStr || Number(amountStr) <= 0) { alt.textContent = '—'; return; }
+  if (sendMode === 'token') {
+    alt.textContent = '$' + (Number(amountStr) * price).toLocaleString(undefined, { maximumFractionDigits: 2 });
+  } else {
+    const symbol = currentPair('fromToken').label.split(' · ')[0];
+    alt.textContent = (Number(amountStr) / price).toLocaleString(undefined, { maximumFractionDigits: 6 }) + ' ' + symbol;
+  }
+}
+
+async function toggleSendMode() {
+  const price = await ensureFromPrice();
+  if (!price) return; // sin precio disponible todavía, no se puede convertir
+  const input = document.getElementById('fromAmount');
+  const val = Number(input.value);
+  if (val > 0) input.value = sendMode === 'token' ? (val * price).toFixed(2) : (val / price).toFixed(6);
+  sendMode = sendMode === 'token' ? 'usd' : 'token';
+  updateSendModeAlt();
+  scheduleFetchPreview();
+}
 
 function flipDirection() {
   const a = document.getElementById('fromToken').value, b = document.getElementById('toToken').value;
@@ -379,8 +431,8 @@ async function erc20Decimals(address) {
 }
 
 async function fetchPreview() {
-  const amountStr = document.getElementById('fromAmount').value;
-  if (!amountStr || Number(amountStr) <= 0) { clearPreview(); return; }
+  const rawAmountStr = document.getElementById('fromAmount').value;
+  if (!rawAmountStr || Number(rawAmountStr) <= 0) { clearPreview(); return; }
   if (!userAddress) { clearPreview(); setStatus(t('connect_to_preview'), true); return; }
 
   const from = currentPair('fromToken'), to = currentPair('toToken');
@@ -395,6 +447,12 @@ async function fetchPreview() {
     toDecimals = customTo ? await erc20Decimals(customTo) : to.decimals;
   } catch { return; } // dirección personalizada todavía incompleta/incorrecta
 
+  let amountStr = rawAmountStr;
+  if (sendMode === 'usd') {
+    const price = await ensureFromPrice();
+    if (!price) { clearPreview(); setStatus(t('no_price'), true); return; }
+    amountStr = (Number(rawAmountStr) / price).toFixed(Math.min(fromDecimals, 8));
+  }
   const fromAmount = ethers.parseUnits(amountStr, fromDecimals).toString();
   const fromAddressParam = userAddress || PLACEHOLDER_ADDR;
   const toAddressParam = userAddress || PLACEHOLDER_ADDR;
