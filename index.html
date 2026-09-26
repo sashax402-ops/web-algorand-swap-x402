@@ -69,6 +69,9 @@
     font-family:'IBM Plex Mono', monospace; display:inline-flex; align-items:center; gap:5px;
   }
   .mode-toggle:hover{border-color:var(--accent-dim); color:var(--text);}
+  .amount-wrap{display:flex; align-items:center; flex:1; min-width:0;}
+  .currency-prefix{font-family:'IBM Plex Mono', monospace; font-size:28px; color:var(--text); display:none;}
+  .currency-prefix.show{display:inline;}
   select.token-select{
     background:var(--panel); border:1px solid var(--border); border-radius:999px;
     padding:8px 12px; font-size:13px; color:var(--text); white-space:nowrap; cursor:pointer;
@@ -128,13 +131,15 @@
     </div>
   </div>
 </div>
-<p style="max-width:440px; width:100%; color:var(--muted); font-size:12.5px; margin:-6px 0 22px;">The Chepeast Swap</p>
 
 <div class="card">
   <div class="field">
     <label data-i18n="label_send">You send</label>
     <div class="field-row">
-      <input id="fromAmount" class="amount-input" type="text" inputmode="decimal" placeholder="0.0" oninput="scheduleFetchPreview(); updateSendModeAlt();">
+      <div class="amount-wrap">
+        <span id="fromCurrencyPrefix" class="currency-prefix">$</span>
+        <input id="fromAmount" class="amount-input" type="text" inputmode="decimal" placeholder="0.0" oninput="scheduleFetchPreview(); updateSendModeAlt();">
+      </div>
       <select id="fromToken" class="token-select" onchange="onPairChange()"></select>
     </div>
     <button id="sendModeToggle" class="mode-toggle" onclick="toggleSendMode()">⇅ <span id="sendModeAlt">—</span></button>
@@ -364,6 +369,7 @@ async function toggleSendMode() {
   const val = Number(input.value);
   if (val > 0) input.value = sendMode === 'token' ? (val * price).toFixed(2) : (val / price).toFixed(6);
   sendMode = sendMode === 'token' ? 'usd' : 'token';
+  document.getElementById('fromCurrencyPrefix').classList.toggle('show', sendMode === 'usd');
   updateSendModeAlt();
   scheduleFetchPreview();
 }
