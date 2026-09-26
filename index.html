@@ -69,6 +69,12 @@
     font-family:'IBM Plex Mono', monospace; display:inline-flex; align-items:center; gap:5px;
   }
   .mode-toggle:hover{border-color:var(--accent-dim); color:var(--text);}
+  .step-badge{
+    display:inline-flex; align-items:center; justify-content:center;
+    width:18px; height:18px; border-radius:50%; background:var(--warn);
+    color:#fff; font-size:11px; font-weight:700; margin-right:6px;
+    font-family:'IBM Plex Sans', sans-serif; vertical-align:middle; flex:none;
+  }
   .amount-wrap{display:flex; align-items:center; flex:1; min-width:0;}
   .currency-prefix{font-family:'IBM Plex Mono', monospace; font-size:28px; color:var(--text); display:none;}
   .currency-prefix.show{display:inline;}
@@ -117,7 +123,7 @@
       <button data-lang="de">DE</button>
     </div>
     <div class="wallet-wrap">
-      <button id="walletBtn" onclick="onWalletBtnClick()">Connect wallet</button>
+      <button id="walletBtn" onclick="onWalletBtnClick()"><span class="step-badge">1</span><span id="walletBtnText">Connect wallet</span></button>
       <div id="walletList" class="wallet-list">
         <div class="title" data-i18n="choose_wallet">Choose a wallet</div>
       </div>
@@ -155,7 +161,7 @@
     <div class="line"><span data-i18n="fee">Algorand network fee</span><span>0.01 USDC</span></div>
   </div>
 
-  <button id="cta" class="cta" onclick="executeSwap()" disabled>Execute Swap</button>
+  <button id="cta" class="cta" onclick="executeSwap()" disabled><span class="step-badge">2</span><span id="ctaText">Execute Swap</span></button>
 </div>
 
 <p class="status" style="opacity:.65; margin-top:6px;" data-i18n="ledger_hint">Using a hardware wallet for Algorand? Unlock it and open the Algorand app before continuing.</p>
@@ -167,6 +173,7 @@ const BACKEND_URL = 'https://algorand-swap-x402.onrender.com';
 let signer = null, userAddress = null, lastPreview = null;
 let sendMode = 'token', fromPriceUSD = null, priceTokenKey = null;
 let evmProviders = [];
+let connectedChainId = null;
 const NATIVE = '0x0000000000000000000000000000000000000000';
 const PLACEHOLDER_ADDR = '0x0000000000000000000000000000000000000000';
 
@@ -205,6 +212,7 @@ const TEXT = {
     err_payment_not_confirmed: code => `The server didn't confirm the payment (${code})`,
     err_no_tx: 'This route has no executable transaction.',
     err_wrong_chain: 'Your wallet refused to switch network. Switch to the source chain manually and retry.',
+    err_no_usdc_optin: 'This Algorand account has no USDC opted-in yet. Opt in first, then retry.',
     approving: 'Approving token spend (an extra transaction, required by any ERC20 token)…',
     sent_waiting: hash => `Sent: ${hash}. Waiting for confirmation…`,
     confirmed: hash => `Confirmed. Hash: ${hash}`,
@@ -227,6 +235,7 @@ const TEXT = {
     err_payment_not_confirmed: code => `El servidor no confirmó el pago (${code})`,
     err_no_tx: 'Esta ruta no trae una transacción ejecutable.',
     err_wrong_chain: 'Tu wallet rechazó cambiar de red. Cámbiala tú a mano a la red de origen y reintenta.',
+    err_no_usdc_optin: 'Esta cuenta de Algorand todavía no tiene USDC activado (opt-in). Actívalo y reintenta.',
     approving: 'Aprobando el gasto del token (una transacción extra, la exige cualquier token ERC20)…',
     sent_waiting: hash => `Enviada: ${hash}. Esperando confirmación…`,
     confirmed: hash => `Confirmado. Hash: ${hash}`,
@@ -249,6 +258,7 @@ const TEXT = {
     err_payment_not_confirmed: code => `Le serveur n'a pas confirmé le paiement (${code})`,
     err_no_tx: 'Cet itinéraire ne contient pas de transaction exécutable.',
     err_wrong_chain: 'Votre portefeuille a refusé de changer de réseau. Changez-le manuellement et réessayez.',
+    err_no_usdc_optin: 'Ce compte Algorand n\'a pas encore activé l\'USDC (opt-in). Activez-le puis réessayez.',
     approving: 'Approbation de la dépense du jeton (une transaction supplémentaire, exigée par tout jeton ERC20)…',
     sent_waiting: hash => `Envoyée : ${hash}. En attente de confirmation…`,
     confirmed: hash => `Confirmée. Hash : ${hash}`,
@@ -271,6 +281,7 @@ const TEXT = {
     err_payment_not_confirmed: code => `Der Server hat die Zahlung nicht bestätigt (${code})`,
     err_no_tx: 'Diese Route enthält keine ausführbare Transaktion.',
     err_wrong_chain: 'Deine Wallet hat den Netzwerkwechsel abgelehnt. Wechsle manuell und versuche es erneut.',
+    err_no_usdc_optin: 'Dieses Algorand-Konto hat USDC noch nicht aktiviert (opt-in). Aktiviere es und versuche es erneut.',
     approving: 'Token-Ausgabe wird genehmigt (eine zusätzliche Transaktion, von jedem ERC20-Token verlangt)…',
     sent_waiting: hash => `Gesendet: ${hash}. Warte auf Bestätigung…`,
     confirmed: hash => `Bestätigt. Hash: ${hash}`,
@@ -288,7 +299,7 @@ function applyLang() {
   document.querySelectorAll('[data-i18n]').forEach(el => el.textContent = t(el.dataset.i18n));
   document.querySelectorAll('[data-i18n-ph]').forEach(el => el.placeholder = t(el.dataset.i18nPh));
   document.querySelectorAll('#langs button').forEach(b => b.classList.toggle('active', b.dataset.lang === lang));
-  if (!userAddress) document.getElementById('walletBtn').textContent = t('connect');
+  if (!userAddress) document.getElementById('walletBtnText').textContent = t('connect');
 }
 document.getElementById('langs').addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-lang]');
@@ -311,7 +322,19 @@ let backendConfigPromise = fetch(`${BACKEND_URL}/config`).then(r => r.json()).ca
 let walletModulePromise = import('/wallet.js').catch(() => null);
 
 function fillSelect(sel) { sel.innerHTML = TOKENS.map(x => `<option value="${x.key}">${x.label}</option>`).join(''); }
-fillSelect(document.getElementById('fromToken'));
+
+// El origen se filtra a la red activa de la wallet conectada (si hay una);
+// el destino siempre muestra todas, porque no hace falta tener fondos ahí.
+function fillFromSelect() {
+  const sel = document.getElementById('fromToken');
+  const prevValue = sel.value;
+  let filtered = connectedChainId ? TOKENS.filter(x => x.chainId === connectedChainId) : TOKENS;
+  if (filtered.length === 0) filtered = TOKENS; // red no soportada: no dejar el desplegable vacío
+  sel.innerHTML = filtered.map(x => `<option value="${x.key}">${x.label}</option>`).join('');
+  if (filtered.some(x => x.key === prevValue)) sel.value = prevValue;
+}
+
+fillFromSelect();
 fillSelect(document.getElementById('toToken'));
 document.getElementById('toToken').selectedIndex = 1;
 
@@ -380,7 +403,7 @@ function clearPreview() {
   document.getElementById('toAmount').style.color = 'var(--muted)';
   document.getElementById('receipt').classList.remove('show');
   const cta = document.getElementById('cta');
-  cta.disabled = true; cta.textContent = t('cta_execute'); cta.className = 'cta';
+  cta.disabled = true; document.getElementById('ctaText').textContent = t('cta_execute'); cta.className = 'cta';
 }
 clearPreview();
 
@@ -394,9 +417,10 @@ function toggleWalletMenu() {
 }
 
 function disconnectWallet() {
-  signer = null; userAddress = null;
+  signer = null; userAddress = null; connectedChainId = null;
   document.getElementById('walletList').classList.remove('show');
-  document.getElementById('walletBtn').textContent = t('connect');
+  document.getElementById('walletBtnText').textContent = t('connect');
+  fillFromSelect();
   clearPreview();
   setStatus('');
 }
@@ -427,8 +451,20 @@ async function useProvider(rawProvider, name) {
   await provider.send('eth_requestAccounts', []);
   signer = await provider.getSigner();
   userAddress = await signer.getAddress();
-  document.getElementById('walletBtn').textContent = userAddress.slice(0,6) + '…' + userAddress.slice(-4);
+  document.getElementById('walletBtnText').textContent = userAddress.slice(0,6) + '…' + userAddress.slice(-4);
+
+  connectedChainId = Number((await provider.getNetwork()).chainId);
+  fillFromSelect();
+  rawProvider.removeListener?.('chainChanged', onWalletChainChanged);
+  rawProvider.on?.('chainChanged', onWalletChainChanged);
+
   scheduleFetchPreview();
+}
+
+function onWalletChainChanged(chainIdHex) {
+  connectedChainId = parseInt(chainIdHex, 16);
+  fillFromSelect();
+  clearPreview();
 }
 
 // ---- Vista previa gratis, en vivo -------------------------------------
@@ -476,7 +512,7 @@ async function fetchPreview() {
     document.getElementById('receipt').classList.add('show');
 
     lastPreview = { fromChain: from.chainId, fromToken: from.address, toChain: to.chainId, toToken: to.address, fromAmount };
-    cta.disabled = false; cta.textContent = t('cta_execute'); cta.className = 'cta';
+    cta.disabled = false; document.getElementById('ctaText').textContent = t('cta_execute'); cta.className = 'cta';
     setStatus('');
   } catch (err) {
     if (myToken !== previewToken) return;
@@ -493,16 +529,16 @@ async function executeSwap() {
 
   // 1) Wallet EVM (si hace falta) -- lo primero, antes de tocar la red.
   if (!signer) {
-    cta.textContent = t('cta_connecting');
+    document.getElementById('ctaText').textContent = t('cta_connecting');
     await connectWallet();
-    if (!signer) { cta.disabled = false; cta.textContent = t('cta_execute'); cta.className = 'cta error'; return; }
+    if (!signer) { cta.disabled = false; document.getElementById('ctaText').textContent = t('cta_execute'); cta.className = 'cta error'; return; }
   }
 
   // 2) Wallet Algorand (Pera) -- también antes de cualquier petición lenta,
   // para no perder la "activación" del clic y que el navegador no bloquee su ventana.
   let payer, wallet;
   try {
-    cta.textContent = t('cta_connecting');
+    document.getElementById('ctaText').textContent = t('cta_connecting');
     const [cfgBackend, mod] = await Promise.all([backendConfigPromise, walletModulePromise]);
     if (!cfgBackend || !mod) throw new Error(t('err_unexpected', 0));
     wallet = mod;
@@ -512,15 +548,26 @@ async function executeSwap() {
       pay_to: cfgBackend.pay_to, price_atomic: cfgBackend.price_atomic,
       api_origin: new URL(BACKEND_URL).origin,
     });
+
+    // Aviso temprano si la cuenta de Algorand no tiene USDC activado, antes
+    // de gastar el resto del flujo. Si la comprobación en sí falla (red...),
+    // seguimos sin bloquear -- es un aviso, no una verificación de seguridad.
+    try {
+      const info = await fetch(`https://mainnet-api.algonode.cloud/v2/accounts/${payer}`).then(r => r.json());
+      const hasUsdc = (info.assets || []).some(a => a['asset-id'] === 31566704);
+      if (!hasUsdc) throw new Error(t('err_no_usdc_optin'));
+    } catch (checkErr) {
+      if (checkErr.message === t('err_no_usdc_optin')) throw checkErr;
+    }
   } catch (err) {
     console.error(err);
     setStatus(err.message, true);
-    cta.disabled = false; cta.textContent = t('cta_retry'); cta.className = 'cta error';
+    cta.disabled = false; document.getElementById('ctaText').textContent = t('cta_retry'); cta.className = 'cta error';
     return;
   }
 
   // 3) Ahora sí, las peticiones de red: cobrar y ejecutar.
-  cta.textContent = t('cta_paying');
+  document.getElementById('ctaText').textContent = t('cta_paying');
   try {
     const fromAddressParam = userAddress;
     const toAddressParam = userAddress;
@@ -548,7 +595,7 @@ async function executeSwap() {
     }
     const full = await resp.json();
 
-    cta.textContent = t('cta_sending');
+    document.getElementById('ctaText').textContent = t('cta_sending');
     const tx = full.transaction_request;
     if (!tx) throw new Error(t('err_no_tx'));
 
@@ -579,12 +626,12 @@ async function executeSwap() {
     const sentTx = await signer.sendTransaction({ to: tx.to, data: tx.data, value: tx.value, gasLimit: tx.gasLimit });
     setStatus(t('sent_waiting', sentTx.hash));
     await sentTx.wait();
-    cta.textContent = t('cta_done'); cta.className = 'cta';
+    document.getElementById('ctaText').textContent = t('cta_done'); cta.className = 'cta';
     setStatus(t('confirmed', sentTx.hash));
   } catch (err) {
     console.error(err);
     setStatus(err.message, true);
-    cta.disabled = false; cta.textContent = t('cta_retry'); cta.className = 'cta error';
+    cta.disabled = false; document.getElementById('ctaText').textContent = t('cta_retry'); cta.className = 'cta error';
   }
 }
 </script>
