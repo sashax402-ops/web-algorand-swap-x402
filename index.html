@@ -204,6 +204,7 @@ const TEXT = {
     err_unexpected: code => `Unexpected server response (${code})`,
     err_payment_not_confirmed: code => `The server didn't confirm the payment (${code})`,
     err_no_tx: 'This route has no executable transaction.',
+    err_wrong_chain: 'Your wallet refused to switch network. Switch to the source chain manually and retry.',
     approving: 'Approving token spend (an extra transaction, required by any ERC20 token)…',
     sent_waiting: hash => `Sent: ${hash}. Waiting for confirmation…`,
     confirmed: hash => `Confirmed. Hash: ${hash}`,
@@ -225,6 +226,7 @@ const TEXT = {
     err_unexpected: code => `Respuesta inesperada del servidor (${code})`,
     err_payment_not_confirmed: code => `El servidor no confirmó el pago (${code})`,
     err_no_tx: 'Esta ruta no trae una transacción ejecutable.',
+    err_wrong_chain: 'Tu wallet rechazó cambiar de red. Cámbiala tú a mano a la red de origen y reintenta.',
     approving: 'Aprobando el gasto del token (una transacción extra, la exige cualquier token ERC20)…',
     sent_waiting: hash => `Enviada: ${hash}. Esperando confirmación…`,
     confirmed: hash => `Confirmado. Hash: ${hash}`,
@@ -246,6 +248,7 @@ const TEXT = {
     err_unexpected: code => `Réponse inattendue du serveur (${code})`,
     err_payment_not_confirmed: code => `Le serveur n'a pas confirmé le paiement (${code})`,
     err_no_tx: 'Cet itinéraire ne contient pas de transaction exécutable.',
+    err_wrong_chain: 'Votre portefeuille a refusé de changer de réseau. Changez-le manuellement et réessayez.',
     approving: 'Approbation de la dépense du jeton (une transaction supplémentaire, exigée par tout jeton ERC20)…',
     sent_waiting: hash => `Envoyée : ${hash}. En attente de confirmation…`,
     confirmed: hash => `Confirmée. Hash : ${hash}`,
@@ -267,6 +270,7 @@ const TEXT = {
     err_unexpected: code => `Unerwartete Serverantwort (${code})`,
     err_payment_not_confirmed: code => `Der Server hat die Zahlung nicht bestätigt (${code})`,
     err_no_tx: 'Diese Route enthält keine ausführbare Transaktion.',
+    err_wrong_chain: 'Deine Wallet hat den Netzwerkwechsel abgelehnt. Wechsle manuell und versuche es erneut.',
     approving: 'Token-Ausgabe wird genehmigt (eine zusätzliche Transaktion, von jedem ERC20-Token verlangt)…',
     sent_waiting: hash => `Gesendet: ${hash}. Warte auf Bestätigung…`,
     confirmed: hash => `Bestätigt. Hash: ${hash}`,
@@ -547,6 +551,17 @@ async function executeSwap() {
     cta.textContent = t('cta_sending');
     const tx = full.transaction_request;
     if (!tx) throw new Error(t('err_no_tx'));
+
+    // Sin esto, la wallet puede seguir en la red donde estuviera antes y
+    // firmar el contrato equivocado -- por eso fallaba igual en cualquier cadena.
+    const targetChainHex = '0x' + Number(lastPreview.fromChain).toString(16);
+    try {
+      await signer.provider.send('wallet_switchEthereumChain', [{ chainId: targetChainHex }]);
+      signer = await signer.provider.getSigner();
+    } catch {
+      throw new Error(t('err_wrong_chain'));
+    }
+
     if (lastPreview.fromToken !== NATIVE) {
       const spender = full.approval_address || tx.to;
       const c = new ethers.Contract(lastPreview.fromToken, [
