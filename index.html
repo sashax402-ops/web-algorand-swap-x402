@@ -97,13 +97,6 @@
   .cta.pending{background:var(--panel-2); color:var(--muted); border:1px solid var(--border);}
   .cta.error{background:var(--warn); color:#2A0F0A;}
   .status{max-width:440px; width:100%; margin-top:16px; font-size:15px; color:var(--muted); text-align:center; line-height:1.5;}
-  .advanced{max-width:440px; width:100%; margin-top:10px;}
-  .advanced summary{font-size:12.5px; color:var(--muted); cursor:pointer;}
-  .advanced-body{display:flex; gap:8px; margin-top:10px;}
-  .advanced-body input{
-    flex:1; background:var(--panel-2); border:1px solid var(--border); border-radius:8px;
-    color:var(--text); padding:8px 10px; font-size:12px; font-family:'IBM Plex Mono', monospace;
-  }
 </style>
 </head>
 <body>
@@ -131,6 +124,7 @@
     </div>
   </div>
 </div>
+<p style="max-width:440px; width:100%; color:var(--warn); font-size:13px; margin:-6px 0 22px;" data-i18n="optin_warning">Your Algorand wallet must have USDC opted-in before swapping.</p>
 
 <div class="card">
   <div class="field">
@@ -164,14 +158,6 @@
   <button id="cta" class="cta" onclick="executeSwap()" disabled>Execute Swap</button>
 </div>
 
-<details class="advanced">
-  <summary data-i18n="advanced_summary">Custom token (for anything not listed)</summary>
-  <div class="advanced-body">
-    <input id="customFrom" data-i18n-ph="placeholder_from" placeholder="Source token address (0x...)" oninput="scheduleFetchPreview()">
-    <input id="customTo" data-i18n-ph="placeholder_to" placeholder="Destination token address (0x...)" oninput="scheduleFetchPreview()">
-  </div>
-</details>
-
 <p class="status" style="opacity:.65; margin-top:6px;" data-i18n="ledger_hint">Using a hardware wallet for Algorand? Unlock it and open the Algorand app before continuing.</p>
 
 <div id="status" class="status"></div>
@@ -201,10 +187,9 @@ const TEXT = {
   en: {
     connect: 'Connect wallet', choose_wallet: 'Choose a wallet',
     label_send: 'You send', label_receive: 'You receive (est.)',
+    optin_warning: 'Your Algorand wallet must have USDC opted-in before swapping.',
     route: 'Route', gas: 'Estimated gas (paid on-chain, not by us)', fee: 'EasySwap fee (via Algorand)',
     ledger_hint: 'Using a hardware wallet for Algorand? Unlock it and open the Algorand app before continuing.',
-    advanced_summary: 'Custom token (for anything not listed)',
-    placeholder_from: 'Source token address (0x...)', placeholder_to: 'Destination token address (0x...)',
 
     cta_execute: 'Execute Swap', cta_connecting: 'Connecting wallet…', cta_paying: 'Paying x402 fee…',
     cta_sending: 'Sending swap…', cta_done: 'Swap sent ✓', cta_retry: 'Retry',
@@ -223,10 +208,9 @@ const TEXT = {
   es: {
     connect: 'Conectar wallet', choose_wallet: 'Elige una wallet',
     label_send: 'Envías', label_receive: 'Recibes (estimado)',
+    optin_warning: 'Tu wallet de Algorand debe tener USDC activado (opt-in) antes de hacer el swap.',
     route: 'Ruta', gas: 'Gas estimado (se paga on-chain, no lo cobramos)', fee: 'Comisión de EasySwap (vía Algorand)',
     ledger_hint: '¿Usas un hardware wallet para Algorand? Desbloquéalo y abre la app de Algorand antes de continuar.',
-    advanced_summary: 'Token personalizado (para algo que no esté en la lista)',
-    placeholder_from: 'Dirección del token origen (0x...)', placeholder_to: 'Dirección del token destino (0x...)',
 
     cta_execute: 'Ejecutar swap', cta_connecting: 'Conectando wallet…', cta_paying: 'Pagando comisión x402…',
     cta_sending: 'Enviando swap…', cta_done: 'Swap enviado ✓', cta_retry: 'Reintentar',
@@ -245,10 +229,9 @@ const TEXT = {
   fr: {
     connect: 'Connecter le portefeuille', choose_wallet: 'Choisissez un portefeuille',
     label_send: 'Vous envoyez', label_receive: 'Vous recevez (est.)',
+    optin_warning: 'Votre portefeuille Algorand doit avoir activé (opt-in) l\'USDC avant de faire le swap.',
     route: 'Itinéraire', gas: 'Gaz estimé (payé on-chain, pas par nous)', fee: 'Frais EasySwap (via Algorand)',
     ledger_hint: 'Vous utilisez un hardware wallet pour Algorand ? Déverrouillez-le et ouvrez l\'appli Algorand avant de continuer.',
-    advanced_summary: 'Jeton personnalisé (pour tout ce qui n\'est pas listé)',
-    placeholder_from: 'Adresse du jeton source (0x...)', placeholder_to: 'Adresse du jeton de destination (0x...)',
 
     cta_execute: 'Exécuter le swap', cta_connecting: 'Connexion au portefeuille…', cta_paying: 'Paiement des frais x402…',
     cta_sending: 'Envoi du swap…', cta_done: 'Swap envoyé ✓', cta_retry: 'Réessayer',
@@ -267,10 +250,9 @@ const TEXT = {
   de: {
     connect: 'Wallet verbinden', choose_wallet: 'Wallet auswählen',
     label_send: 'Du sendest', label_receive: 'Du erhältst (geschätzt)',
+    optin_warning: 'Deine Algorand-Wallet muss USDC aktiviert haben (opt-in), bevor du swappst.',
     route: 'Route', gas: 'Geschätztes Gas (on-chain bezahlt, nicht von uns)', fee: 'EasySwap-Gebühr (über Algorand)',
     ledger_hint: 'Nutzt du eine Hardware-Wallet für Algorand? Entsperre sie und öffne die Algorand-App, bevor du fortfährst.',
-    advanced_summary: 'Benutzerdefinierter Token (für alles, was nicht aufgeführt ist)',
-    placeholder_from: 'Adresse des Quell-Tokens (0x...)', placeholder_to: 'Adresse des Ziel-Tokens (0x...)',
 
     cta_execute: 'Swap ausführen', cta_connecting: 'Wallet wird verbunden…', cta_paying: 'x402-Gebühr wird bezahlt…',
     cta_sending: 'Swap wird gesendet…', cta_done: 'Swap gesendet ✓', cta_retry: 'Erneut versuchen',
@@ -430,42 +412,26 @@ function scheduleFetchPreview() {
   previewDebounce = setTimeout(fetchPreview, 450);
 }
 
-async function erc20Decimals(address) {
-  const provider = new ethers.BrowserProvider(window.ethereum || evmProviders[0]?.provider);
-  const c = new ethers.Contract(address, ['function decimals() view returns (uint8)'], provider);
-  return await c.decimals();
-}
-
 async function fetchPreview() {
   const rawAmountStr = document.getElementById('fromAmount').value;
   if (!rawAmountStr || Number(rawAmountStr) <= 0) { clearPreview(); return; }
   if (!userAddress) { clearPreview(); setStatus(t('connect_to_preview'), true); return; }
 
   const from = currentPair('fromToken'), to = currentPair('toToken');
-  const customFrom = document.getElementById('customFrom').value.trim();
-  const customTo = document.getElementById('customTo').value.trim();
-  const fromTokenAddr = customFrom || from.address;
-  const toTokenAddr = customTo || to.address;
-
-  let fromDecimals, toDecimals;
-  try {
-    fromDecimals = customFrom ? await erc20Decimals(customFrom) : from.decimals;
-    toDecimals = customTo ? await erc20Decimals(customTo) : to.decimals;
-  } catch { return; } // dirección personalizada todavía incompleta/incorrecta
 
   let amountStr = rawAmountStr;
   if (sendMode === 'usd') {
     const price = await ensureFromPrice();
     if (!price) { clearPreview(); setStatus(t('no_price'), true); return; }
-    amountStr = (Number(rawAmountStr) / price).toFixed(Math.min(fromDecimals, 8));
+    amountStr = (Number(rawAmountStr) / price).toFixed(Math.min(from.decimals, 8));
   }
-  const fromAmount = ethers.parseUnits(amountStr, fromDecimals).toString();
+  const fromAmount = ethers.parseUnits(amountStr, from.decimals).toString();
   const fromAddressParam = userAddress || PLACEHOLDER_ADDR;
   const toAddressParam = userAddress || PLACEHOLDER_ADDR;
 
   const params = new URLSearchParams({
-    from_chain: from.chainId, from_token: fromTokenAddr,
-    to_chain: to.chainId, to_token: toTokenAddr,
+    from_chain: from.chainId, from_token: from.address,
+    to_chain: to.chainId, to_token: to.address,
     from_amount: fromAmount, from_address: fromAddressParam, to_address: toAddressParam,
   });
 
@@ -476,14 +442,14 @@ async function fetchPreview() {
     if (myToken !== previewToken) return;
     if (!resp.ok) throw new Error(t('err_unexpected', resp.status));
     const data = await resp.json();
-    const toAmountHuman = ethers.formatUnits(data.to_amount || '0', toDecimals);
+    const toAmountHuman = ethers.formatUnits(data.to_amount || '0', to.decimals);
     document.getElementById('toAmount').textContent = Number(toAmountHuman).toLocaleString(undefined, { maximumFractionDigits: 6 });
     document.getElementById('toAmount').style.color = 'var(--text)';
     document.getElementById('rProvider').textContent = data.provider || '—';
     document.getElementById('rGas').textContent = data.estimated_gas_costs_usd != null ? `$${data.estimated_gas_costs_usd}` : '—';
     document.getElementById('receipt').classList.add('show');
 
-    lastPreview = { fromChain: from.chainId, fromToken: fromTokenAddr, toChain: to.chainId, toToken: toTokenAddr, fromAmount };
+    lastPreview = { fromChain: from.chainId, fromToken: from.address, toChain: to.chainId, toToken: to.address, fromAmount };
     cta.disabled = false; cta.textContent = t('cta_execute'); cta.className = 'cta';
     setStatus('');
   } catch (err) {
@@ -559,10 +525,9 @@ async function executeSwap() {
     cta.textContent = t('cta_sending');
     const tx = full.transaction_request;
     if (!tx) throw new Error(t('err_no_tx'));
-    const customFrom = document.getElementById('customFrom').value.trim();
-    if (customFrom) {
+    if (lastPreview.fromToken !== NATIVE) {
       const spender = full.approval_address || tx.to;
-      const c = new ethers.Contract(customFrom, [
+      const c = new ethers.Contract(lastPreview.fromToken, [
         'function allowance(address,address) view returns (uint256)',
         'function approve(address,uint256) returns (bool)',
       ], signer);
