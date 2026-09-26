@@ -117,7 +117,7 @@
       <button data-lang="de">DE</button>
     </div>
     <div class="wallet-wrap">
-      <button id="walletBtn" onclick="connectWallet()" data-i18n="connect">Connect wallet</button>
+      <button id="walletBtn" onclick="onWalletBtnClick()">Connect wallet</button>
       <div id="walletList" class="wallet-list">
         <div class="title" data-i18n="choose_wallet">Choose a wallet</div>
       </div>
@@ -185,7 +185,7 @@ for (const [id, c] of Object.entries(CHAIN_INFO)) {
 
 const TEXT = {
   en: {
-    connect: 'Connect wallet', choose_wallet: 'Choose a wallet',
+    connect: 'Connect wallet', choose_wallet: 'Choose a wallet', disconnect: 'Disconnect',
     label_send: 'You send', label_receive: 'You receive (est.)',
     optin_warning: 'Your Algorand wallet must have USDC opted-in before swapping.',
     route: 'Route', gas: 'Estimated gas (paid on-chain, not by us)', fee: 'EasySwap fee (via Algorand)',
@@ -206,7 +206,7 @@ const TEXT = {
     confirmed: hash => `Confirmed. Hash: ${hash}`,
   },
   es: {
-    connect: 'Conectar wallet', choose_wallet: 'Elige una wallet',
+    connect: 'Conectar wallet', choose_wallet: 'Elige una wallet', disconnect: 'Desconectar',
     label_send: 'Envías', label_receive: 'Recibes (estimado)',
     optin_warning: 'Tu wallet de Algorand debe tener USDC activado (opt-in) antes de hacer el swap.',
     route: 'Ruta', gas: 'Gas estimado (se paga on-chain, no lo cobramos)', fee: 'Comisión de EasySwap (vía Algorand)',
@@ -227,7 +227,7 @@ const TEXT = {
     confirmed: hash => `Confirmado. Hash: ${hash}`,
   },
   fr: {
-    connect: 'Connecter le portefeuille', choose_wallet: 'Choisissez un portefeuille',
+    connect: 'Connecter le portefeuille', choose_wallet: 'Choisissez un portefeuille', disconnect: 'Déconnecter',
     label_send: 'Vous envoyez', label_receive: 'Vous recevez (est.)',
     optin_warning: 'Votre portefeuille Algorand doit avoir activé (opt-in) l\'USDC avant de faire le swap.',
     route: 'Itinéraire', gas: 'Gaz estimé (payé on-chain, pas par nous)', fee: 'Frais EasySwap (via Algorand)',
@@ -248,7 +248,7 @@ const TEXT = {
     confirmed: hash => `Confirmée. Hash : ${hash}`,
   },
   de: {
-    connect: 'Wallet verbinden', choose_wallet: 'Wallet auswählen',
+    connect: 'Wallet verbinden', choose_wallet: 'Wallet auswählen', disconnect: 'Trennen',
     label_send: 'Du sendest', label_receive: 'Du erhältst (geschätzt)',
     optin_warning: 'Deine Algorand-Wallet muss USDC aktiviert haben (opt-in), bevor du swappst.',
     route: 'Route', gas: 'Geschätztes Gas (on-chain bezahlt, nicht von uns)', fee: 'EasySwap-Gebühr (über Algorand)',
@@ -281,6 +281,7 @@ function applyLang() {
   document.querySelectorAll('[data-i18n]').forEach(el => el.textContent = t(el.dataset.i18n));
   document.querySelectorAll('[data-i18n-ph]').forEach(el => el.placeholder = t(el.dataset.i18nPh));
   document.querySelectorAll('#langs button').forEach(b => b.classList.toggle('active', b.dataset.lang === lang));
+  if (!userAddress) document.getElementById('walletBtn').textContent = t('connect');
 }
 document.getElementById('langs').addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-lang]');
@@ -378,6 +379,23 @@ function clearPreview() {
   cta.disabled = true; cta.textContent = t('cta_execute'); cta.className = 'cta';
 }
 clearPreview();
+
+function onWalletBtnClick() { userAddress ? toggleWalletMenu() : connectWallet(); }
+
+function toggleWalletMenu() {
+  const list = document.getElementById('walletList');
+  if (list.classList.contains('show')) { list.classList.remove('show'); return; }
+  list.innerHTML = `<button class="wallet-option" onclick="disconnectWallet()">${t('disconnect')}</button>`;
+  list.classList.add('show');
+}
+
+function disconnectWallet() {
+  signer = null; userAddress = null;
+  document.getElementById('walletList').classList.remove('show');
+  document.getElementById('walletBtn').textContent = t('connect');
+  clearPreview();
+  setStatus('');
+}
 
 async function connectWallet() {
   await new Promise(r => setTimeout(r, 120));
