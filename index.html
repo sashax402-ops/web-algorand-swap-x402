@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>swap — best route, visible fee</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#12151A; --panel:#1B1F26; --panel-2:#20252D; --text:#EDEEF0; --muted:#8A8F98;
+    --accent:#5FBF95; --accent-dim:#3E7D63; --warn:#E8735F; --border:#2A2F38;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:'IBM Plex Sans', system-ui, sans-serif;
+    display:flex; flex-direction:column; align-items:center;
+    min-height:100vh; padding:48px 20px;
+  }
+  .brand{width:100%; max-width:440px; display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;}
+  .brand .name{font-size:15px; font-weight:600; letter-spacing:0.01em;}
+  .brand .name span{color:var(--accent);}
+  .brand-right{display:flex; align-items:center; gap:10px;}
+  .langs{display:flex; gap:4px;}
+  .langs button{
+    background:none; border:1px solid var(--border); color:var(--muted);
+    padding:5px 8px; border-radius:6px; font-size:11px; cursor:pointer;
+    font-family:'IBM Plex Mono', monospace;
+  }
+  .langs button.active{color:var(--bg); background:var(--accent); border-color:var(--accent);}
+  #walletBtn{
+    background:var(--panel); border:1px solid var(--border); color:var(--text);
+    padding:8px 14px; border-radius:8px; font-size:13px; cursor:pointer;
+    font-family:'IBM Plex Mono', monospace; position:relative;
+  }
+  #walletBtn:hover{border-color:var(--accent-dim);}
+  .wallet-wrap{position:relative;}
+  .wallet-list{
+    display:none; position:absolute; top:calc(100% + 6px); right:0; min-width:180px;
+    background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:6px;
+    z-index:10; box-shadow:0 8px 24px rgba(0,0,0,.35);
+  }
+  .wallet-list.show{display:block;}
+  .wallet-list .title{font-size:11px; color:var(--muted); padding:6px 8px;}
+  .wallet-option{
+    display:block; width:100%; text-align:left; background:none; border:none; color:var(--text);
+    padding:8px; border-radius:7px; cursor:pointer; font-size:13px; font-family:'IBM Plex Sans', sans-serif;
+  }
+  .wallet-option:hover{background:var(--panel-2);}
+  .card{width:100%; max-width:440px; background:var(--panel); border:1px solid var(--border); border-radius:16px; padding:6px;}
+  .field{background:var(--panel-2); border-radius:12px; padding:16px 18px; position:relative;}
+  .field + .field{margin-top:4px;}
+  .field label{font-size:12px; color:var(--muted);}
+  .field-row{display:flex; align-items:center; justify-content:space-between; margin-top:8px; gap:10px;}
+  .amount-input{
+    background:none; border:none; outline:none; color:var(--text);
+    font-family:'IBM Plex Mono', monospace; font-size:28px; width:100%;
+    font-variant-numeric: tabular-nums;
+  }
+  .amount-input::placeholder{color:#4A5058;}
+  select.token-select{
+    background:var(--panel); border:1px solid var(--border); border-radius:999px;
+    padding:8px 12px; font-size:13px; color:var(--text); white-space:nowrap; cursor:pointer;
+    -webkit-appearance:none; appearance:none;
+  }
+  .swap-toggle{display:flex; justify-content:center; margin:2px 0; position:relative; height:0;}
+  .swap-toggle button{
+    position:relative; top:-12px; width:34px; height:34px; border-radius:10px;
+    background:var(--panel); border:1px solid var(--border); color:var(--muted);
+    cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:15px;
+  }
+  .swap-toggle button:hover{color:var(--accent); border-color:var(--accent-dim);}
+  #btcAddressField{display:none;}
+  #btcAddressField .amount-input{font-size:15px;}
+  .receipt{padding:14px 18px 4px; font-size:12.5px; color:var(--muted); display:none;}
+  .receipt.show{display:block;}
+  .receipt .line{display:flex; justify-content:space-between; padding:5px 0;}
+  .receipt .line span:last-child{color:var(--text); font-family:'IBM Plex Mono', monospace;}
+  .cta{
+    width:100%; margin-top:4px; padding:16px; border:none; border-radius:12px;
+    background:var(--accent); color:#0B1310; font-size:15px; font-weight:600; cursor:pointer;
+    font-family:'IBM Plex Sans', sans-serif;
+  }
+  .cta:disabled{opacity:.55; cursor:default;}
+  .cta.pending{background:var(--panel-2); color:var(--muted); border:1px solid var(--border);}
+  .cta.error{background:var(--warn); color:#2A0F0A;}
+  .status{max-width:440px; width:100%; margin-top:16px; font-size:13px; color:var(--muted); text-align:center; line-height:1.5;}
+  .advanced{max-width:440px; width:100%; margin-top:10px;}
+  .advanced summary{font-size:12.5px; color:var(--muted); cursor:pointer;}
+  .advanced-body{display:flex; gap:8px; margin-top:10px;}
+  .advanced-body input{
+    flex:1; background:var(--panel-2); border:1px solid var(--border); border-radius:8px;
+    color:var(--text); padding:8px 10px; font-size:12px; font-family:'IBM Plex Mono', monospace;
+  }
+</style>
+</head>
+<body>
+
+<div class="brand">
+  <div class="name">swap<span>.</span></div>
+  <div class="brand-right">
+    <div class="langs" id="langs">
+      <button data-lang="en">EN</button>
+      <button data-lang="es">ES</button>
+      <button data-lang="fr">FR</button>
+      <button data-lang="de">DE</button>
+    </div>
+    <div class="wallet-wrap">
+      <button id="walletBtn" onclick="connectWallet()" data-i18n="connect">Connect wallet</button>
+      <div id="walletList" class="wallet-list">
+        <div class="title" data-i18n="choose_wallet">Choose a wallet</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="field">
+    <label data-i18n="label_send">You send</label>
+    <div class="field-row">
+      <input id="fromAmount" class="amount-input" type="text" inputmode="decimal" placeholder="0.0" oninput="resetQuote()">
+      <select id="fromToken" class="token-select" onchange="onPairChange()"></select>
+    </div>
+  </div>
+
+  <div class="swap-toggle"><button onclick="flipDirection()" title="Flip">⇅</button></div>
+
+  <div class="field">
+    <label data-i18n="label_receive">You receive (est.)</label>
+    <div class="field-row">
+      <div id="toAmount" class="amount-input" style="color:var(--muted);">—</div>
+      <select id="toToken" class="token-select" onchange="onPairChange()"></select>
+    </div>
+  </div>
+
+  <div id="btcAddressField" class="field">
+    <label data-i18n="btc_address_label">Bitcoin address (only if sending or receiving BTC)</label>
+    <div class="field-row">
+      <input id="btcAddress" class="amount-input" type="text" placeholder="bc1..." oninput="resetQuote()">
+    </div>
+  </div>
+
+  <div id="receipt" class="receipt">
+    <div class="line"><span data-i18n="route">Route</span><span id="rProvider">—</span></div>
+    <div class="line"><span data-i18n="gas">Estimated gas</span><span id="rGas">—</span></div>
+    <div class="line"><span data-i18n="fee">Algorand network fee</span><span>0.01 USDC</span></div>
+  </div>
+
+  <button id="cta" class="cta" onclick="onCtaClick()" data-i18n="cta_get_quote">Get quote</button>
+</div>
+
+<details class="advanced">
+  <summary data-i18n="advanced_summary">Custom token (for anything not listed)</summary>
+  <div class="advanced-body">
+    <input id="customFrom" data-i18n-ph="placeholder_from" placeholder="Source token address (0x...)">
+    <input id="customTo" data-i18n-ph="placeholder_to" placeholder="Destination token address (0x...)">
+  </div>
+</details>
+
+<div id="status" class="status"></div>
+
+<script>
+const BACKEND_URL = 'https://algorand-swap-x402.onrender.com';
+const NATIVE = '0x0000000000000000000000000000000000000000';
+
+const CHAINS = {
+  1:     { name: 'Ethereum', native: 'ETH',   decimals: 18 },
+  137:   { name: 'Polygon',  native: 'MATIC', decimals: 18 },
+  42161: { name: 'Arbitrum', native: 'ETH',   decimals: 18 },
+  8453:  { name: 'Base',     native: 'ETH',   decimals: 18 },
+  10:    { name: 'Optimism', native: 'ETH',   decimals: 18 },
+  56:    { name: 'BSC',      native: 'BNB',   decimals: 18 },
+  BTC:   { name: 'Bitcoin',  native: 'BTC',   decimals: 8, isBTC: true },
+};
+const PAIRS = Object.entries(CHAINS).map(([id, c]) => ({ id: c.isBTC ? 'BTC' : Number(id), label: `${c.native} · ${c.name}` }));
+
+const TEXT = {
+  en: {
+    connect: 'Connect wallet', choose_wallet: 'Choose a wallet',
+    label_send: 'You send', label_receive: 'You receive (est.)',
+    route: 'Route', gas: 'Estimated gas', fee: 'Algorand network fee',
+    advanced_summary: 'Custom token (for anything not listed)',
+    placeholder_from: 'Source token address (0x...)', placeholder_to: 'Destination token address (0x...)',
+    btc_address_label: 'Bitcoin address (only if sending or receiving BTC)',
+    cta_get_quote: 'Get quote', cta_getting_quote: 'Getting quote…', cta_paying: 'Paying x402 fee…',
+    cta_confirm: 'Confirm & send swap', cta_sending: 'Sending swap…', cta_done: 'Swap sent ✓',
+    cta_retry: 'Retry', cta_retry_swap: 'Retry swap', btc_execute_soon: 'BTC execution: coming soon',
+    err_no_wallet: 'No EVM wallet found in this browser (install MetaMask, Talisman...).',
+    err_enter_amount: 'Enter an amount first.', err_enter_btc_address: 'Enter a Bitcoin address first.',
+    err_unexpected: code => `Unexpected server response (${code})`,
+    err_payment_not_confirmed: code => `The server didn't confirm the payment (${code})`,
+    err_no_tx: 'This route has no executable transaction.',
+    approving: 'Approving token spend (an extra transaction, required by any ERC20 token)…',
+    sent_waiting: hash => `Sent: ${hash}. Waiting for confirmation…`,
+    confirmed: hash => `Confirmed. Hash: ${hash}`,
+    pending_algo: 'Missing: connect Pera Wallet to pay the x402 fee.',
+  },
+  es: {
+    connect: 'Conectar wallet', choose_wallet: 'Elige una wallet',
+    label_send: 'Envías', label_receive: 'Recibes (estimado)',
+    route: 'Ruta', gas: 'Gas estimado', fee: 'Comisión de red Algorand',
+    advanced_summary: 'Token personalizado (para algo que no esté en la lista)',
+    placeholder_from: 'Dirección del token origen (0x...)', placeholder_to: 'Dirección del token destino (0x...)',
+    btc_address_label: 'Dirección de Bitcoin (solo si envías o recibes BTC)',
+    cta_get_quote: 'Obtener cotización', cta_getting_quote: 'Pidiendo cotización…', cta_paying: 'Pagando comisión x402…',
+    cta_confirm: 'Confirmar y enviar swap', cta_sending: 'Enviando swap…', cta_done: 'Swap enviado ✓',
+    cta_retry: 'Reintentar', cta_retry_swap: 'Reintentar swap', btc_execute_soon: 'Ejecución BTC: próximamente',
+    err_no_wallet: 'No encuentro una wallet EVM en este navegador (instala MetaMask, Talisman...).',
+    err_enter_amount: 'Escribe una cantidad primero.', err_enter_btc_address: 'Escribe una dirección de Bitcoin primero.',
+    err_unexpected: code => `Respuesta inesperada del servidor (${code})`,
+    err_payment_not_confirmed: code => `El servidor no confirmó el pago (${code})`,
+    err_no_tx: 'Esta ruta no trae una transacción ejecutable.',
+    approving: 'Aprobando el gasto del token (una transacción extra, la exige cualquier token ERC20)…',
+    sent_waiting: hash => `Enviada: ${hash}. Esperando confirmación…`,
+    confirmed: hash => `Confirmado. Hash: ${hash}`,
+    pending_algo: 'Falta conectar Pera Wallet para pagar la comisión x402.',
+  },
+  fr: {
+    connect: 'Connecter le portefeuille', choose_wallet: 'Choisissez un portefeuille',
+    label_send: 'Vous envoyez', label_receive: 'Vous recevez (est.)',
+    route: 'Itinéraire', gas: 'Gaz estimé', fee: 'Frais de réseau Algorand',
+    advanced_summary: 'Jeton personnalisé (pour tout ce qui n\'est pas listé)',
+    placeholder_from: 'Adresse du jeton source (0x...)', placeholder_to: 'Adresse du jeton de destination (0x...)',
+    btc_address_label: 'Adresse Bitcoin (uniquement si vous envoyez ou recevez du BTC)',
+    cta_get_quote: 'Obtenir un devis', cta_getting_quote: 'Récupération du devis…', cta_paying: 'Paiement des frais x402…',
+    cta_confirm: 'Confirmer et envoyer', cta_sending: 'Envoi du swap…', cta_done: 'Swap envoyé ✓',
+    cta_retry: 'Réessayer', cta_retry_swap: 'Réessayer le swap', btc_execute_soon: 'Exécution BTC : bientôt disponible',
+    err_no_wallet: 'Aucun portefeuille EVM trouvé dans ce navigateur (installez MetaMask, Talisman...).',
+    err_enter_amount: 'Indiquez d\'abord un montant.', err_enter_btc_address: 'Indiquez d\'abord une adresse Bitcoin.',
+    err_unexpected: code => `Réponse inattendue du serveur (${code})`,
+    err_payment_not_confirmed: code => `Le serveur n'a pas confirmé le paiement (${code})`,
+    err_no_tx: 'Cet itinéraire ne contient pas de transaction exécutable.',
+    approving: 'Approbation de la dépense du jeton (une transaction supplémentaire, exigée par tout jeton ERC20)…',
+    sent_waiting: hash => `Envoyée : ${hash}. En attente de confirmation…`,
+    confirmed: hash => `Confirmée. Hash : ${hash}`,
+    pending_algo: 'Il manque la connexion à Pera Wallet pour payer les frais x402.',
+  },
+  de: {
+    connect: 'Wallet verbinden', choose_wallet: 'Wallet auswählen',
+    label_send: 'Du sendest', label_receive: 'Du erhältst (geschätzt)',
+    route: 'Route', gas: 'Geschätztes Gas', fee: 'Algorand-Netzwerkgebühr',
+    advanced_summary: 'Benutzerdefinierter Token (für alles, was nicht aufgeführt ist)',
+    placeholder_from: 'Adresse des Quell-Tokens (0x...)', placeholder_to: 'Adresse des Ziel-Tokens (0x...)',
+    btc_address_label: 'Bitcoin-Adresse (nur wenn du BTC sendest oder empfängst)',
+    cta_get_quote: 'Angebot einholen', cta_getting_quote: 'Angebot wird abgerufen…', cta_paying: 'x402-Gebühr wird bezahlt…',
+    cta_confirm: 'Bestätigen und Swap senden', cta_sending: 'Swap wird gesendet…', cta_done: 'Swap gesendet ✓',
+    cta_retry: 'Erneut versuchen', cta_retry_swap: 'Swap erneut versuchen', btc_execute_soon: 'BTC-Ausführung: bald verfügbar',
+    err_no_wallet: 'Keine EVM-Wallet in diesem Browser gefunden (installiere MetaMask, Talisman...).',
+    err_enter_amount: 'Gib zuerst einen Betrag ein.', err_enter_btc_address: 'Gib zuerst eine Bitcoin-Adresse ein.',
+    err_unexpected: code => `Unerwartete Serverantwort (${code})`,
+    err_payment_not_confirmed: code => `Der Server hat die Zahlung nicht bestätigt (${code})`,
+    err_no_tx: 'Diese Route enthält keine ausführbare Transaktion.',
+    approving: 'Token-Ausgabe wird genehmigt (eine zusätzliche Transaktion, von jedem ERC20-Token verlangt)…',
+    sent_waiting: hash => `Gesendet: ${hash}. Warte auf Bestätigung…`,
+    confirmed: hash => `Bestätigt. Hash: ${hash}`,
+    pending_algo: 'Es fehlt die Verbindung zu Pera Wallet, um die x402-Gebühr zu bezahlen.',
+  },
+};
+
+let lang = localStorage.getItem('lang') || 'en';
+function t(key, ...args) {
+  const dict = TEXT[lang] || TEXT.en;
+  const val = dict[key] !== undefined ? dict[key] : TEXT.en[key];
+  return typeof val === 'function' ? val(...args) : val;
+}
+function applyLang() {
+  document.documentElement.lang = lang;
+  document.querySelectorAll('[data-i18n]').forEach(el => el.textContent = t(el.dataset.i18n));
+  document.querySelectorAll('[data-i18n-ph]').forEach(el => el.placeholder = t(el.dataset.i18nPh));
+  document.querySelectorAll('#langs button').forEach(b => b.classList.toggle('active', b.dataset.lang === lang));
+}
+document.getElementById('langs').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-lang]');
+  if (!btn) return;
+  lang = btn.dataset.lang;
+  localStorage.setItem('lang', lang);
+  applyLang();
+});
+applyLang();
+
+let signer = null, userAddress = null, lastQuote = null, stage = 'idle';
+let evmProviders = [];
+window.addEventListener('eip6963:announceProvider', (e) => {
+  if (!evmProviders.find(p => p.info.uuid === e.detail.info.uuid)) evmProviders.push(e.detail);
+});
+window.dispatchEvent(new Event('eip6963:requestProvider'));
+
+function fillSelect(sel) { sel.innerHTML = PAIRS.map(p => `<option value="${p.id}">${p.label}</option>`).join(''); }
+fillSelect(document.getElementById('fromToken'));
+fillSelect(document.getElementById('toToken'));
+document.getElementById('toToken').selectedIndex = 1;
+
+function currentPair(selectId) {
+  const raw = document.getElementById(selectId).value;
+  const id = raw === 'BTC' ? 'BTC' : Number(raw);
+  return { chainId: id, ...CHAINS[id] };
+}
+
+function onPairChange() { updateBtcFieldVisibility(); resetQuote(); }
+
+function updateBtcFieldVisibility() {
+  const from = currentPair('fromToken'), to = currentPair('toToken');
+  document.getElementById('btcAddressField').style.display =
+    (from.chainId === 'BTC' || to.chainId === 'BTC') ? 'block' : 'none';
+}
+updateBtcFieldVisibility();
+
+function flipDirection() {
+  const a = document.getElementById('fromToken').value, b = document.getElementById('toToken').value;
+  document.getElementById('fromToken').value = b;
+  document.getElementById('toToken').value = a;
+  onPairChange();
+}
+
+function resetQuote() {
+  lastQuote = null; stage = 'idle';
+  document.getElementById('toAmount').textContent = '—';
+  document.getElementById('toAmount').style.color = 'var(--muted)';
+  document.getElementById('receipt').classList.remove('show');
+  const cta = document.getElementById('cta');
+  cta.textContent = t('cta_get_quote'); cta.className = 'cta'; cta.disabled = false;
+  setStatus('');
+}
+
+function setStatus(msg, isError) {
+  const el = document.getElementById('status');
+  el.textContent = msg || '';
+  el.style.color = isError ? 'var(--warn)' : 'var(--muted)';
+}
+
+async function connectWallet() {
+  await new Promise(r => setTimeout(r, 120));
+  const options = evmProviders.length
+    ? evmProviders.map(p => ({ name: p.info.name, provider: p.provider }))
+    : (window.ethereum ? [{ name: 'Wallet', provider: window.ethereum }] : []);
+  if (options.length === 0) { setStatus(t('err_no_wallet'), true); return; }
+  if (options.length === 1) return useProvider(options[0].provider, options[0].name);
+  const list = document.getElementById('walletList');
+  list.innerHTML = `<div class="title">${t('choose_wallet')}</div>` +
+    options.map((o, i) => `<button class="wallet-option" data-i="${i}">${o.name}</button>`).join('');
+  list.classList.add('show');
+  list.querySelectorAll('button[data-i]').forEach(btn => btn.onclick = () => {
+    list.classList.remove('show');
+    useProvider(options[btn.dataset.i].provider, options[btn.dataset.i].name);
+  });
+}
+
+async function useProvider(rawProvider, name) {
+  const provider = new ethers.BrowserProvider(rawProvider);
+  await provider.send('eth_requestAccounts', []);
+  signer = await provider.getSigner();
+  userAddress = await signer.getAddress();
+  document.getElementById('walletBtn').textContent = userAddress.slice(0,6) + '…' + userAddress.slice(-4);
+}
+
+function onCtaClick() {
+  if (stage === 'idle') return getQuote();
+  if (stage === 'quoted') return executeSwap();
+}
+
+async function getQuote() {
+  const amountStr = document.getElementById('fromAmount').value;
+  if (!amountStr || Number(amountStr) <= 0) { setStatus(t('err_enter_amount'), true); return; }
+
+  const from = currentPair('fromToken'), to = currentPair('toToken');
+  const involvesBTC = from.chainId === 'BTC' || to.chainId === 'BTC';
+  const btcAddress = document.getElementById('btcAddress').value.trim();
+  if (involvesBTC && !btcAddress) { setStatus(t('err_enter_btc_address'), true); return; }
+  if (!(from.chainId === 'BTC' && to.chainId === 'BTC') && !signer) {
+    await connectWallet(); if (!signer) return;
+  }
+
+  const customFrom = document.getElementById('customFrom').value.trim();
+  const customTo = document.getElementById('customTo').value.trim();
+  const fromTokenAddr = from.chainId === 'BTC' ? 'bitcoin' : (customFrom || NATIVE);
+  const toTokenAddr = to.chainId === 'BTC' ? 'bitcoin' : (customTo || NATIVE);
+  const fromDecimals = from.chainId === 'BTC' ? 8 : (customFrom ? await erc20Decimals(customFrom) : 18);
+  const toDecimals = to.chainId === 'BTC' ? 8 : (customTo ? await erc20Decimals(customTo) : 18);
+  const fromAmount = ethers.parseUnits(amountStr, fromDecimals).toString();
+  const fromAddressParam = from.chainId === 'BTC' ? btcAddress : userAddress;
+  const toAddressParam = to.chainId === 'BTC' ? btcAddress : userAddress;
+
+  const cta = document.getElementById('cta');
+  cta.disabled = true; cta.textContent = t('cta_getting_quote'); cta.className = 'cta pending';
+
+  const params = new URLSearchParams({
+    from_chain: from.chainId, from_token: fromTokenAddr,
+    to_chain: to.chainId, to_token: toTokenAddr,
+    from_amount: fromAmount, from_address: fromAddressParam, to_address: toAddressParam,
+  });
+
+  try {
+    let resp = await fetch(`${BACKEND_URL}/quote?${params}`);
+    if (resp.status !== 402) throw new Error(t('err_unexpected', resp.status));
+    const required = JSON.parse(atob(resp.headers.get('PAYMENT-REQUIRED')));
+
+    cta.textContent = t('cta_paying');
+    const paymentHeader = await payAlgorandFee(required);
+
+    resp = await fetch(`${BACKEND_URL}/quote?${params}`, { headers: { 'PAYMENT-SIGNATURE': paymentHeader } });
+    if (!resp.ok) throw new Error(t('err_payment_not_confirmed', resp.status));
+    lastQuote = await resp.json();
+    lastQuote._toDecimals = toDecimals;
+    lastQuote._fromAmount = fromAmount;
+
+    renderQuote(lastQuote);
+    if (involvesBTC) {
+      stage = 'idle'; cta.disabled = true; cta.textContent = t('btc_execute_soon'); cta.className = 'cta pending';
+    } else {
+      stage = 'quoted'; cta.disabled = false; cta.textContent = t('cta_confirm'); cta.className = 'cta';
+    }
+    setStatus('');
+  } catch (err) {
+    console.error(err);
+    setStatus(err.message, true);
+    cta.disabled = false; cta.textContent = t('cta_retry'); cta.className = 'cta error';
+  }
+}
+
+function renderQuote(q) {
+  const toAmountHuman = ethers.formatUnits(q.to_amount || '0', q._toDecimals);
+  document.getElementById('toAmount').textContent = Number(toAmountHuman).toLocaleString(undefined, { maximumFractionDigits: 6 });
+  document.getElementById('toAmount').style.color = 'var(--text)';
+  document.getElementById('rProvider').textContent = q.provider || '—';
+  document.getElementById('rGas').textContent = q.estimated_gas_costs_usd != null ? `$${q.estimated_gas_costs_usd}` : '—';
+  document.getElementById('receipt').classList.add('show');
+}
+
+async function executeSwap() {
+  const cta = document.getElementById('cta');
+  cta.disabled = true; cta.textContent = t('cta_sending'); cta.className = 'cta pending';
+  try {
+    const tx = lastQuote.transaction_request;
+    if (!tx) throw new Error(t('err_no_tx'));
+
+    const customFrom = document.getElementById('customFrom').value.trim();
+    if (customFrom) {
+      await ensureAllowance(customFrom, lastQuote.approval_address || tx.to, lastQuote._fromAmount);
+    }
+
+    const sentTx = await signer.sendTransaction({ to: tx.to, data: tx.data, value: tx.value, gasLimit: tx.gasLimit });
+    setStatus(t('sent_waiting', sentTx.hash));
+    await sentTx.wait();
+    cta.textContent = t('cta_done'); cta.className = 'cta';
+    setStatus(t('confirmed', sentTx.hash));
+    stage = 'done';
+  } catch (err) {
+    console.error(err);
+    setStatus(err.message, true);
+    cta.disabled = false; cta.textContent = t('cta_retry_swap'); cta.className = 'cta error';
+  }
+}
+
+async function erc20Decimals(address) {
+  const provider = new ethers.BrowserProvider(window.ethereum);
+  const c = new ethers.Contract(address, ['function decimals() view returns (uint8)'], provider);
+  return await c.decimals();
+}
+
+async function ensureAllowance(tokenAddress, spender, neededAmountStr) {
+  const c = new ethers.Contract(tokenAddress, [
+    'function allowance(address,address) view returns (uint256)',
+    'function approve(address,uint256) returns (bool)',
+  ], signer);
+  const needed = BigInt(neededAmountStr);
+  const current = await c.allowance(userAddress, spender);
+  if (current >= needed) return;
+  setStatus(t('approving'));
+  const tx = await c.approve(spender, needed);
+  await tx.wait();
+}
+
+// -----------------------------------------------------------------------
+// PENDIENTE: aquí va tu integración real de Pera Wallet para pagar la
+// comisión x402. Ya la tienes funcionando en el checkout de "Trading News"
+// -- pásamela y la conecto aquí en vez de inventar una nueva.
+async function payAlgorandFee(requirements) {
+  throw new Error(t('pending_algo'));
+}
+</script>
+</body>
+</html>
