@@ -75,8 +75,6 @@
     cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:15px;
   }
   .swap-toggle button:hover{color:var(--accent); border-color:var(--accent-dim);}
-  #btcAddressField{display:none;}
-  #btcAddressField .amount-input{font-size:15px;}
   .receipt{padding:14px 18px 4px; font-size:12.5px; color:var(--muted); display:none;}
   .receipt.show{display:block;}
   .receipt .line{display:flex; justify-content:space-between; padding:5px 0;}
@@ -144,13 +142,6 @@
     </div>
   </div>
 
-  <div id="btcAddressField" class="field">
-    <label data-i18n="btc_address_label">Bitcoin address (only if sending or receiving BTC)</label>
-    <div class="field-row">
-      <input id="btcAddress" class="amount-input" type="text" placeholder="bc1..." oninput="scheduleFetchPreview()">
-    </div>
-  </div>
-
   <div id="receipt" class="receipt">
     <div class="line"><span data-i18n="route">Route</span><span id="rProvider">—</span></div>
     <div class="line"><span data-i18n="gas">Estimated gas</span><span id="rGas">—</span></div>
@@ -168,6 +159,8 @@
   </div>
 </details>
 
+<p class="status" style="opacity:.65; margin-top:6px;" data-i18n="ledger_hint">Using a hardware wallet for Algorand? Unlock it and open the Algorand app before continuing.</p>
+
 <div id="status" class="status"></div>
 
 <script>
@@ -175,30 +168,36 @@ const BACKEND_URL = 'https://algorand-swap-x402.onrender.com';
 const NATIVE = '0x0000000000000000000000000000000000000000';
 const PLACEHOLDER_ADDR = '0x0000000000000000000000000000000000000000';
 
-const CHAINS = {
-  1:     { name: 'Ethereum', native: 'ETH',   decimals: 18 },
-  137:   { name: 'Polygon',  native: 'MATIC', decimals: 18 },
-  42161: { name: 'Arbitrum', native: 'ETH',   decimals: 18 },
-  8453:  { name: 'Base',     native: 'ETH',   decimals: 18 },
-  10:    { name: 'Optimism', native: 'ETH',   decimals: 18 },
-  56:    { name: 'BSC',      native: 'BNB',   decimals: 18 },
-  BTC:   { name: 'Bitcoin',  native: 'BTC',   decimals: 8, isBTC: true },
+// Direcciones USDC verificadas contra developers.circle.com (no adivinadas).
+const CHAIN_INFO = {
+  1:     { name: 'Ethereum',  native: 'ETH',   usdc: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48' },
+  137:   { name: 'Polygon',   native: 'MATIC', usdc: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359' },
+  42161: { name: 'Arbitrum',  native: 'ETH',   usdc: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831' },
+  8453:  { name: 'Base',      native: 'ETH',   usdc: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' },
+  10:    { name: 'Optimism',  native: 'ETH',   usdc: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85' },
+  56:    { name: 'BSC',       native: 'BNB' },
+  43114: { name: 'Avalanche', native: 'AVAX',  usdc: '0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E' },
 };
-const PAIRS = Object.entries(CHAINS).map(([id, c]) => ({ id: c.isBTC ? 'BTC' : Number(id), label: `${c.native} · ${c.name}` }));
+const TOKENS = [];
+for (const [id, c] of Object.entries(CHAIN_INFO)) {
+  TOKENS.push({ key: `${id}:native`, chainId: Number(id), address: NATIVE, decimals: 18, label: `${c.native} · ${c.name}` });
+  if (c.usdc) TOKENS.push({ key: `${id}:usdc`, chainId: Number(id), address: c.usdc, decimals: 6, label: `USDC · ${c.name}` });
+}
 
 const TEXT = {
   en: {
     connect: 'Connect wallet', choose_wallet: 'Choose a wallet',
     label_send: 'You send', label_receive: 'You receive (est.)',
-    route: 'Route', gas: 'Estimated gas', fee: 'Algorand network fee',
+    route: 'Route', gas: 'Estimated gas (paid on-chain, not by us)', fee: 'EasySwap fee (via Algorand)',
+    ledger_hint: 'Using a hardware wallet for Algorand? Unlock it and open the Algorand app before continuing.',
     advanced_summary: 'Custom token (for anything not listed)',
     placeholder_from: 'Source token address (0x...)', placeholder_to: 'Destination token address (0x...)',
-    btc_address_label: 'Bitcoin address (only if sending or receiving BTC)',
+
     cta_execute: 'Execute Swap', cta_connecting: 'Connecting wallet…', cta_paying: 'Paying x402 fee…',
     cta_sending: 'Sending swap…', cta_done: 'Swap sent ✓', cta_retry: 'Retry',
-    btc_execute_soon: 'BTC execution: coming soon',
+
     err_no_wallet: 'No EVM wallet found in this browser (install MetaMask, Talisman...).',
-    err_enter_btc_address: 'Enter a Bitcoin address first.',
+
     connect_to_preview: 'Connect your wallet to see a live quote.',
     err_unexpected: code => `Unexpected server response (${code})`,
     err_payment_not_confirmed: code => `The server didn't confirm the payment (${code})`,
@@ -210,15 +209,16 @@ const TEXT = {
   es: {
     connect: 'Conectar wallet', choose_wallet: 'Elige una wallet',
     label_send: 'Envías', label_receive: 'Recibes (estimado)',
-    route: 'Ruta', gas: 'Gas estimado', fee: 'Comisión de red Algorand',
+    route: 'Ruta', gas: 'Gas estimado (se paga on-chain, no lo cobramos)', fee: 'Comisión de EasySwap (vía Algorand)',
+    ledger_hint: '¿Usas un hardware wallet para Algorand? Desbloquéalo y abre la app de Algorand antes de continuar.',
     advanced_summary: 'Token personalizado (para algo que no esté en la lista)',
     placeholder_from: 'Dirección del token origen (0x...)', placeholder_to: 'Dirección del token destino (0x...)',
-    btc_address_label: 'Dirección de Bitcoin (solo si envías o recibes BTC)',
+
     cta_execute: 'Ejecutar swap', cta_connecting: 'Conectando wallet…', cta_paying: 'Pagando comisión x402…',
     cta_sending: 'Enviando swap…', cta_done: 'Swap enviado ✓', cta_retry: 'Reintentar',
-    btc_execute_soon: 'Ejecución BTC: próximamente',
+
     err_no_wallet: 'No encuentro una wallet EVM en este navegador (instala MetaMask, Talisman...).',
-    err_enter_btc_address: 'Escribe una dirección de Bitcoin primero.',
+
     connect_to_preview: 'Conecta tu wallet para ver una cotización en vivo.',
     err_unexpected: code => `Respuesta inesperada del servidor (${code})`,
     err_payment_not_confirmed: code => `El servidor no confirmó el pago (${code})`,
@@ -230,15 +230,16 @@ const TEXT = {
   fr: {
     connect: 'Connecter le portefeuille', choose_wallet: 'Choisissez un portefeuille',
     label_send: 'Vous envoyez', label_receive: 'Vous recevez (est.)',
-    route: 'Itinéraire', gas: 'Gaz estimé', fee: 'Frais de réseau Algorand',
+    route: 'Itinéraire', gas: 'Gaz estimé (payé on-chain, pas par nous)', fee: 'Frais EasySwap (via Algorand)',
+    ledger_hint: 'Vous utilisez un hardware wallet pour Algorand ? Déverrouillez-le et ouvrez l\'appli Algorand avant de continuer.',
     advanced_summary: 'Jeton personnalisé (pour tout ce qui n\'est pas listé)',
     placeholder_from: 'Adresse du jeton source (0x...)', placeholder_to: 'Adresse du jeton de destination (0x...)',
-    btc_address_label: 'Adresse Bitcoin (uniquement si vous envoyez ou recevez du BTC)',
+
     cta_execute: 'Exécuter le swap', cta_connecting: 'Connexion au portefeuille…', cta_paying: 'Paiement des frais x402…',
     cta_sending: 'Envoi du swap…', cta_done: 'Swap envoyé ✓', cta_retry: 'Réessayer',
-    btc_execute_soon: 'Exécution BTC : bientôt disponible',
+
     err_no_wallet: 'Aucun portefeuille EVM trouvé dans ce navigateur (installez MetaMask, Talisman...).',
-    err_enter_btc_address: 'Indiquez d\'abord une adresse Bitcoin.',
+
     connect_to_preview: 'Connectez votre portefeuille pour voir un devis en direct.',
     err_unexpected: code => `Réponse inattendue du serveur (${code})`,
     err_payment_not_confirmed: code => `Le serveur n'a pas confirmé le paiement (${code})`,
@@ -250,15 +251,16 @@ const TEXT = {
   de: {
     connect: 'Wallet verbinden', choose_wallet: 'Wallet auswählen',
     label_send: 'Du sendest', label_receive: 'Du erhältst (geschätzt)',
-    route: 'Route', gas: 'Geschätztes Gas', fee: 'Algorand-Netzwerkgebühr',
+    route: 'Route', gas: 'Geschätztes Gas (on-chain bezahlt, nicht von uns)', fee: 'EasySwap-Gebühr (über Algorand)',
+    ledger_hint: 'Nutzt du eine Hardware-Wallet für Algorand? Entsperre sie und öffne die Algorand-App, bevor du fortfährst.',
     advanced_summary: 'Benutzerdefinierter Token (für alles, was nicht aufgeführt ist)',
     placeholder_from: 'Adresse des Quell-Tokens (0x...)', placeholder_to: 'Adresse des Ziel-Tokens (0x...)',
-    btc_address_label: 'Bitcoin-Adresse (nur wenn du BTC sendest oder empfängst)',
+
     cta_execute: 'Swap ausführen', cta_connecting: 'Wallet wird verbunden…', cta_paying: 'x402-Gebühr wird bezahlt…',
     cta_sending: 'Swap wird gesendet…', cta_done: 'Swap gesendet ✓', cta_retry: 'Erneut versuchen',
-    btc_execute_soon: 'BTC-Ausführung: bald verfügbar',
+
     err_no_wallet: 'Keine EVM-Wallet in diesem Browser gefunden (installiere MetaMask, Talisman...).',
-    err_enter_btc_address: 'Gib zuerst eine Bitcoin-Adresse ein.',
+
     connect_to_preview: 'Verbinde deine Wallet, um ein Live-Angebot zu sehen.',
     err_unexpected: code => `Unerwartete Serverantwort (${code})`,
     err_payment_not_confirmed: code => `Der Server hat die Zahlung nicht bestätigt (${code})`,
@@ -303,25 +305,16 @@ window.dispatchEvent(new Event('eip6963:requestProvider'));
 let backendConfigPromise = fetch(`${BACKEND_URL}/config`).then(r => r.json()).catch(() => null);
 let walletModulePromise = import('/wallet.js').catch(() => null);
 
-function fillSelect(sel) { sel.innerHTML = PAIRS.map(p => `<option value="${p.id}">${p.label}</option>`).join(''); }
+function fillSelect(sel) { sel.innerHTML = TOKENS.map(x => `<option value="${x.key}">${x.label}</option>`).join(''); }
 fillSelect(document.getElementById('fromToken'));
 fillSelect(document.getElementById('toToken'));
 document.getElementById('toToken').selectedIndex = 1;
 
 function currentPair(selectId) {
-  const raw = document.getElementById(selectId).value;
-  const id = raw === 'BTC' ? 'BTC' : Number(raw);
-  return { chainId: id, ...CHAINS[id] };
+  return TOKENS.find(x => x.key === document.getElementById(selectId).value);
 }
 
-function onPairChange() { updateBtcFieldVisibility(); scheduleFetchPreview(); }
-
-function updateBtcFieldVisibility() {
-  const from = currentPair('fromToken'), to = currentPair('toToken');
-  document.getElementById('btcAddressField').style.display =
-    (from.chainId === 'BTC' || to.chainId === 'BTC') ? 'block' : 'none';
-}
-updateBtcFieldVisibility();
+function onPairChange() { scheduleFetchPreview(); }
 
 function flipDirection() {
   const a = document.getElementById('fromToken').value, b = document.getElementById('toToken').value;
@@ -391,24 +384,20 @@ async function fetchPreview() {
   if (!userAddress) { clearPreview(); setStatus(t('connect_to_preview')); return; }
 
   const from = currentPair('fromToken'), to = currentPair('toToken');
-  const involvesBTC = from.chainId === 'BTC' || to.chainId === 'BTC';
-  const btcAddress = document.getElementById('btcAddress').value.trim();
-  if (involvesBTC && !btcAddress) return; // espera en silencio a que la escriba
-
   const customFrom = document.getElementById('customFrom').value.trim();
   const customTo = document.getElementById('customTo').value.trim();
-  const fromTokenAddr = from.chainId === 'BTC' ? 'bitcoin' : (customFrom || NATIVE);
-  const toTokenAddr = to.chainId === 'BTC' ? 'bitcoin' : (customTo || NATIVE);
+  const fromTokenAddr = customFrom || from.address;
+  const toTokenAddr = customTo || to.address;
 
   let fromDecimals, toDecimals;
   try {
-    fromDecimals = from.chainId === 'BTC' ? 8 : (customFrom ? await erc20Decimals(customFrom) : 18);
-    toDecimals = to.chainId === 'BTC' ? 8 : (customTo ? await erc20Decimals(customTo) : 18);
+    fromDecimals = customFrom ? await erc20Decimals(customFrom) : from.decimals;
+    toDecimals = customTo ? await erc20Decimals(customTo) : to.decimals;
   } catch { return; } // dirección personalizada todavía incompleta/incorrecta
 
   const fromAmount = ethers.parseUnits(amountStr, fromDecimals).toString();
-  const fromAddressParam = from.chainId === 'BTC' ? btcAddress : (userAddress || PLACEHOLDER_ADDR);
-  const toAddressParam = to.chainId === 'BTC' ? btcAddress : (userAddress || PLACEHOLDER_ADDR);
+  const fromAddressParam = userAddress || PLACEHOLDER_ADDR;
+  const toAddressParam = userAddress || PLACEHOLDER_ADDR;
 
   const params = new URLSearchParams({
     from_chain: from.chainId, from_token: fromTokenAddr,
@@ -430,9 +419,8 @@ async function fetchPreview() {
     document.getElementById('rGas').textContent = data.estimated_gas_costs_usd != null ? `$${data.estimated_gas_costs_usd}` : '—';
     document.getElementById('receipt').classList.add('show');
 
-    lastPreview = { fromChain: from.chainId, fromToken: fromTokenAddr, toChain: to.chainId, toToken: toTokenAddr, fromAmount, involvesBTC, btcAddress };
-    if (involvesBTC) { cta.disabled = true; cta.textContent = t('btc_execute_soon'); cta.className = 'cta pending'; }
-    else { cta.disabled = false; cta.textContent = t('cta_execute'); cta.className = 'cta'; }
+    lastPreview = { fromChain: from.chainId, fromToken: fromTokenAddr, toChain: to.chainId, toToken: toTokenAddr, fromAmount };
+    cta.disabled = false; cta.textContent = t('cta_execute'); cta.className = 'cta';
     setStatus('');
   } catch (err) {
     if (myToken !== previewToken) return;
@@ -478,8 +466,8 @@ async function executeSwap() {
   // 3) Ahora sí, las peticiones de red: cobrar y ejecutar.
   cta.textContent = t('cta_paying');
   try {
-    const fromAddressParam = lastPreview.fromChain === 'BTC' ? lastPreview.btcAddress : userAddress;
-    const toAddressParam = lastPreview.toChain === 'BTC' ? lastPreview.btcAddress : userAddress;
+    const fromAddressParam = userAddress;
+    const toAddressParam = userAddress;
     const params = new URLSearchParams({
       from_chain: lastPreview.fromChain, from_token: lastPreview.fromToken,
       to_chain: lastPreview.toChain, to_token: lastPreview.toToken,
@@ -500,11 +488,6 @@ async function executeSwap() {
     resp = await fetch(`${BACKEND_URL}/execute?${params}`, { headers: { 'PAYMENT-SIGNATURE': paymentHeader } });
     if (!resp.ok) throw new Error(t('err_payment_not_confirmed', resp.status));
     const full = await resp.json();
-
-    if (lastPreview.involvesBTC) {
-      cta.textContent = t('btc_execute_soon'); cta.className = 'cta pending'; cta.disabled = true;
-      return;
-    }
 
     cta.textContent = t('cta_sending');
     const tx = full.transaction_request;
