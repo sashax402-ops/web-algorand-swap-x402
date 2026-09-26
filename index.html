@@ -164,6 +164,9 @@
 
 <script>
 const BACKEND_URL = 'https://algorand-swap-x402.onrender.com';
+let signer = null, userAddress = null, lastPreview = null;
+let sendMode = 'token', fromPriceUSD = null, priceTokenKey = null;
+let evmProviders = [];
 const NATIVE = '0x0000000000000000000000000000000000000000';
 const PLACEHOLDER_ADDR = '0x0000000000000000000000000000000000000000';
 
@@ -292,9 +295,6 @@ document.getElementById('langs').addEventListener('click', (e) => {
 });
 applyLang();
 
-let signer = null, userAddress = null, lastPreview = null;
-let sendMode = 'token', fromPriceUSD = null, priceTokenKey = null;
-let evmProviders = [];
 window.addEventListener('eip6963:announceProvider', (e) => {
   if (!evmProviders.find(p => p.info.uuid === e.detail.info.uuid)) evmProviders.push(e.detail);
 });
