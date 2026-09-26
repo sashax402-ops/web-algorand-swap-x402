@@ -87,7 +87,7 @@
   .cta:disabled{opacity:.55; cursor:default;}
   .cta.pending{background:var(--panel-2); color:var(--muted); border:1px solid var(--border);}
   .cta.error{background:var(--warn); color:#2A0F0A;}
-  .status{max-width:440px; width:100%; margin-top:16px; font-size:13px; color:var(--muted); text-align:center; line-height:1.5;}
+  .status{max-width:440px; width:100%; margin-top:16px; font-size:15px; color:var(--muted); text-align:center; line-height:1.5;}
   .advanced{max-width:440px; width:100%; margin-top:10px;}
   .advanced summary{font-size:12.5px; color:var(--muted); cursor:pointer;}
   .advanced-body{display:flex; gap:8px; margin-top:10px;}
@@ -381,7 +381,7 @@ async function erc20Decimals(address) {
 async function fetchPreview() {
   const amountStr = document.getElementById('fromAmount').value;
   if (!amountStr || Number(amountStr) <= 0) { clearPreview(); return; }
-  if (!userAddress) { clearPreview(); setStatus(t('connect_to_preview')); return; }
+  if (!userAddress) { clearPreview(); setStatus(t('connect_to_preview'), true); return; }
 
   const from = currentPair('fromToken'), to = currentPair('toToken');
   const customFrom = document.getElementById('customFrom').value.trim();
@@ -486,7 +486,10 @@ async function executeSwap() {
     const paymentHeader = await wallet.sign(quoteToSign);
 
     resp = await fetch(`${BACKEND_URL}/execute?${params}`, { headers: { 'PAYMENT-SIGNATURE': paymentHeader } });
-    if (!resp.ok) throw new Error(t('err_payment_not_confirmed', resp.status));
+    if (!resp.ok) {
+      const body = await resp.json().catch(() => ({}));
+      throw new Error(body.detail || t('err_payment_not_confirmed', resp.status));
+    }
     const full = await resp.json();
 
     cta.textContent = t('cta_sending');
