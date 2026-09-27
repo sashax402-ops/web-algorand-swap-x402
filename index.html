@@ -6,7 +6,6 @@
 <meta property="og:site_name" content="ChepeastSwap">
 <meta property="og:title" content="ChepeastSwap — Crypto Swap">
 <meta property="og:description" content="Multi-chain crypto swap routes via LI.FI">
-<meta property="og:image" content="https://TU-DOMINIO/logo.png">
 <title>ChepeastSwap — The Chepeast Swap</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -50,6 +49,13 @@
     z-index:10; box-shadow:0 8px 24px rgba(0,0,0,.35);
   }
   .wallet-list.show{display:block;}
+  .wallet-list{width:300px; max-width:calc(100vw - 40px); max-height:65vh; overflow-y:auto;}
+  .wallet-list .title{line-height:1.45;}
+  .wallet-option:disabled{opacity:.55; cursor:default;}
+  .wallet-summary{max-width:440px; width:100%; color:var(--muted); font-size:12px; line-height:1.6; margin:0 0 14px; overflow-wrap:anywhere;}
+  .wallet-summary:empty{display:none;}
+  .brand{flex-wrap:wrap; gap:12px;}
+  .brand-right{width:100%; justify-content:space-between;}
   .wallet-list .title{font-size:11px; color:var(--muted); padding:6px 8px;}
   .wallet-option{
     display:block; width:100%; text-align:left; background:none; border:none; color:var(--text);
@@ -128,12 +134,13 @@
     </div>
     <div class="wallet-wrap">
       <button id="walletBtn" onclick="onWalletBtnClick()"><span class="step-badge">1</span><span id="walletBtnText">Connect wallet</span></button>
-      <div id="walletList" class="wallet-list">
+      <div id="walletList" class="wallet-list" aria-label="Wallet selection">
         <div class="title" data-i18n="choose_wallet">Choose a wallet</div>
       </div>
     </div>
   </div>
 </div>
+<div id="walletSummary" class="wallet-summary" aria-live="polite"></div>
 <p style="max-width:440px; width:100%; color:var(--warn); font-size:13px; margin:-6px 0 22px;" data-i18n="optin_warning">Your Algorand wallet must have USDC opted-in before swapping.</p>
 
 <div class="card">
@@ -178,6 +185,9 @@ let signer = null, userAddress = null, lastPreview = null;
 let sendMode = 'token', fromPriceUSD = null, priceTokenKey = null;
 let evmProviders = [];
 let connectedChainId = null;
+let activeEvmProvider = null, evmWalletName = '', walletConnecting = false;
+let swapInProgress = false, walletMenuVersion = 0;
+let algoWallet = null, algoConfig = null;
 const NATIVE = '0x0000000000000000000000000000000000000000';
 const PLACEHOLDER_ADDR = '0x0000000000000000000000000000000000000000';
 
@@ -292,6 +302,40 @@ const TEXT = {
   },
 };
 
+// Wallet roles are separate: EVM executes the swap; Algorand pays x402.
+Object.assign(TEXT.en, {
+  evm_role: 'Swap · Ethereum / Arbitrum / EVM', algo_role: 'Fee · Algorand USDC',
+  wallet_loading: 'Looking for compatible wallets…', wallet_none: 'No compatible extension detected.',
+  wallet_refresh: 'Scan again', wallet_close: 'Close', wallet_connected: 'Connected wallets',
+  algo_choose: 'Choose an Algorand wallet for the fee, then press Execute swap again.',
+  account_choose: 'Choose an Algorand account', account_change: 'Change Algorand account',
+  wallet_pending: 'Finish the request in your wallet.',
+});
+Object.assign(TEXT.es, {
+  evm_role: 'Swap · Ethereum / Arbitrum / EVM', algo_role: 'Comisión · USDC en Algorand',
+  wallet_loading: 'Buscando wallets compatibles…', wallet_none: 'No se detecta una extensión compatible.',
+  wallet_refresh: 'Volver a buscar', wallet_close: 'Cerrar', wallet_connected: 'Wallets conectadas',
+  algo_choose: 'Elige una wallet de Algorand para la comisión y después pulsa Ejecutar swap otra vez.',
+  account_choose: 'Elige una cuenta de Algorand', account_change: 'Cambiar cuenta de Algorand',
+  wallet_pending: 'Termina la solicitud en tu wallet.',
+});
+Object.assign(TEXT.fr, {
+  evm_role: 'Swap · Ethereum / Arbitrum / EVM', algo_role: 'Frais · USDC sur Algorand',
+  wallet_loading: 'Recherche de portefeuilles compatibles…', wallet_none: 'Aucune extension compatible détectée.',
+  wallet_refresh: 'Rechercher à nouveau', wallet_close: 'Fermer', wallet_connected: 'Portefeuilles connectés',
+  algo_choose: 'Choisissez un portefeuille Algorand pour les frais, puis relancez le swap.',
+  account_choose: 'Choisissez un compte Algorand', account_change: 'Changer de compte Algorand',
+  wallet_pending: 'Terminez la demande dans votre portefeuille.',
+});
+Object.assign(TEXT.de, {
+  evm_role: 'Swap · Ethereum / Arbitrum / EVM', algo_role: 'Gebühr · USDC auf Algorand',
+  wallet_loading: 'Kompatible Wallets werden gesucht…', wallet_none: 'Keine kompatible Erweiterung erkannt.',
+  wallet_refresh: 'Erneut suchen', wallet_close: 'Schließen', wallet_connected: 'Verbundene Wallets',
+  algo_choose: 'Wähle eine Algorand-Wallet für die Gebühr und starte den Swap erneut.',
+  account_choose: 'Algorand-Konto wählen', account_change: 'Algorand-Konto wechseln',
+  wallet_pending: 'Schließe die Anfrage in deiner Wallet ab.',
+});
+
 let lang = localStorage.getItem('lang') || 'en';
 function t(key, ...args) {
   const dict = TEXT[lang] || TEXT.en;
@@ -303,7 +347,7 @@ function applyLang() {
   document.querySelectorAll('[data-i18n]').forEach(el => el.textContent = t(el.dataset.i18n));
   document.querySelectorAll('[data-i18n-ph]').forEach(el => el.placeholder = t(el.dataset.i18nPh));
   document.querySelectorAll('#langs button').forEach(b => b.classList.toggle('active', b.dataset.lang === lang));
-  if (!userAddress) document.getElementById('walletBtnText').textContent = t('connect');
+  updateWalletSummary();
 }
 document.getElementById('langs').addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-lang]');
@@ -314,16 +358,32 @@ document.getElementById('langs').addEventListener('click', (e) => {
 });
 applyLang();
 
-window.addEventListener('eip6963:announceProvider', (e) => {
-  if (!evmProviders.find(p => p.info.uuid === e.detail.info.uuid)) evmProviders.push(e.detail);
+window.addEventListener('eip6963:announceProvider', (event) => {
+  const detail = event.detail;
+  if (!detail?.info?.uuid || typeof detail.provider?.request !== 'function') return;
+  if (!evmProviders.some(p => p.info.uuid === detail.info.uuid || p.provider === detail.provider)) evmProviders.push(detail);
 });
 window.dispatchEvent(new Event('eip6963:requestProvider'));
 
-// Pre-cargadas al abrir la página: para cuando el usuario pulse "Execute
-// Swap", ya están listas y no retrasan la llamada a Pera con una espera de
-// red -- eso es lo que hacía que el navegador bloqueara su ventana emergente.
-let backendConfigPromise = fetch(`${BACKEND_URL}/config`).then(r => r.json()).catch(() => null);
-let walletModulePromise = import('/wallet.js').catch(() => null);
+// Preload both connectors; neither opens a wallet until the user chooses it.
+const loadBackendConfig = () => fetch(`${BACKEND_URL}/config`).then(r => {
+  if (!r.ok) throw new Error(t('err_unexpected', r.status));
+  return r.json();
+}).catch(() => null);
+let backendConfigPromise = loadBackendConfig();
+let walletModulePromise = import('/wallet-connect.js?v=20260927').then(mod => {
+  algoWallet = mod;
+  return mod;
+}).catch(() => null);
+window.addEventListener('algorand-wallet-changed', updateWalletSummary);
+
+async function loadAlgorand() {
+  let [config, mod] = await Promise.all([backendConfigPromise, walletModulePromise]);
+  if (!config) config = await (backendConfigPromise = loadBackendConfig());
+  if (!config || !mod) throw new Error(t('err_unexpected', 0));
+  algoConfig = mod.configFromBackend(config, BACKEND_URL);
+  return mod;
+}
 
 function fillSelect(sel) { sel.innerHTML = TOKENS.map(x => `<option value="${x.key}">${x.label}</option>`).join(''); }
 
@@ -401,7 +461,9 @@ function setStatus(msg, isError) {
   el.style.color = isError ? 'var(--warn)' : 'var(--muted)';
 }
 
+let previewDebounce = null, previewToken = 0;
 function clearPreview() {
+  ++previewToken;
   lastPreview = null;
   document.getElementById('toAmount').textContent = '—';
   document.getElementById('toAmount').style.color = 'var(--muted)';
@@ -411,74 +473,183 @@ function clearPreview() {
 }
 clearPreview();
 
-function onWalletBtnClick() { userAddress ? toggleWalletMenu() : connectWallet(); }
+function shortAddress(address) { return address.slice(0, 6) + '…' + address.slice(-4); }
 
-function toggleWalletMenu() {
-  const list = document.getElementById('walletList');
-  if (list.classList.contains('show')) { list.classList.remove('show'); return; }
-  list.innerHTML = `<button class="wallet-option" onclick="disconnectWallet()">${t('disconnect')}</button>`;
-  list.classList.add('show');
+function updateWalletSummary() {
+  const payer = algoWallet?.currentPayer();
+  const summary = document.getElementById('walletSummary');
+  summary.replaceChildren();
+  for (const [role, name, address] of [
+    ['evm_role', evmWalletName, userAddress],
+    ['algo_role', algoWallet?.currentWallet(), payer],
+  ]) {
+    if (!address) continue;
+    const row = document.createElement('div');
+    row.textContent = `${t(role)}: ${name} · ${shortAddress(address)}`;
+    row.title = address;
+    summary.appendChild(row);
+  }
+  document.getElementById('walletBtnText').textContent = userAddress || payer ? t('wallet_connected') : t('connect');
 }
 
-function disconnectWallet() {
-  signer = null; userAddress = null; connectedChainId = null;
+function closeWalletMenu() {
+  walletMenuVersion++;
   document.getElementById('walletList').classList.remove('show');
-  document.getElementById('walletBtnText').textContent = t('connect');
-  fillFromSelect();
-  clearPreview();
-  setStatus('');
+}
+function onWalletBtnClick() {
+  if (swapInProgress || walletConnecting) return;
+  if (document.getElementById('walletList').classList.contains('show')) closeWalletMenu();
+  else connectWallet();
+}
+document.addEventListener('click', event => {
+  if (!event.target.closest('.wallet-wrap')) closeWalletMenu();
+});
+document.addEventListener('keydown', event => { if (event.key === 'Escape') closeWalletMenu(); });
+
+function menuTitle(list, label) {
+  const title = document.createElement('div');
+  title.className = 'title'; title.textContent = label; list.appendChild(title);
+}
+function menuButton(list, label, action) {
+  const button = document.createElement('button');
+  button.type = 'button'; button.className = 'wallet-option'; button.textContent = label;
+  button.onclick = async () => {
+    if (walletConnecting || swapInProgress) return;
+    try { await action(); } catch (err) { setStatus(err.message, true); }
+  };
+  list.appendChild(button);
+  return button;
 }
 
-async function connectWallet() {
-  await new Promise(r => setTimeout(r, 120));
-  const options = evmProviders.length
-    ? evmProviders.map(p => ({ name: p.info.name, provider: p.provider }))
-    : (window.ethereum ? [{ name: 'Wallet', provider: window.ethereum }] : []);
-  if (options.length === 0) { setStatus(t('err_no_wallet'), true); return; }
-  if (options.length === 1) return useProvider(options[0].provider, options[0].name);
+function getEvmOptions() {
+  const options = evmProviders.map(p => ({ name: String(p.info.name || 'EVM wallet'), provider: p.provider }));
+  // Older extensions may expose a providers array instead of EIP-6963.
+  const legacy = window.ethereum?.providers || (options.length ? [] : [window.ethereum]);
+  for (const provider of legacy) {
+    if (!provider?.request || options.some(o => o.provider === provider)) continue;
+    const name = provider.isTalisman ? 'Talisman' : provider.isMetaMask ? 'MetaMask' : provider.isCoinbaseWallet ? 'Coinbase Wallet' : 'EVM wallet';
+    options.push({ name, provider });
+  }
+  return options;
+}
+
+async function connectWallet(onlyAlgorand = false) {
   const list = document.getElementById('walletList');
-  list.innerHTML = `<div class="title">${t('choose_wallet')}</div>` +
-    options.map((o, i) => `<button class="wallet-option" data-i="${i}">${o.name}</button>`).join('');
-  list.classList.add('show');
-  list.querySelectorAll('button[data-i]').forEach(btn => btn.onclick = () => {
-    list.classList.remove('show');
-    useProvider(options[btn.dataset.i].provider, options[btn.dataset.i].name);
-  });
+  const version = ++walletMenuVersion;
+  list.replaceChildren(); list.classList.add('show');
+  menuTitle(list, t('wallet_loading'));
+  window.dispatchEvent(new Event('eip6963:requestProvider'));
+  let choices = [], mod = null, error = null;
+  try { mod = await loadAlgorand(); choices = await mod.discover(algoConfig); }
+  catch (err) { error = err; }
+  if (version !== walletMenuVersion) return;
+  list.replaceChildren();
+  if (!onlyAlgorand) {
+    menuTitle(list, t('evm_role'));
+    const options = getEvmOptions();
+    if (!options.length) menuTitle(list, t('wallet_none'));
+    for (const option of options) menuButton(list, option.name, () => useProvider(option.provider, option.name));
+    if (userAddress) menuButton(list, `${t('disconnect')} · ${evmWalletName}`, disconnectWallet);
+  }
+  menuTitle(list, t('algo_role'));
+  if (error) menuTitle(list, error.message);
+  else {
+    if (!choices.length) menuTitle(list, t('wallet_none'));
+    for (const choice of choices) menuButton(list, choice.name, () => useAlgorand(choice));
+    menuButton(list, 'Pera Wallet', () => useAlgorand({ id: 'pera', name: 'Pera Wallet' }));
+    if (mod.accounts().length > 1) menuButton(list, t('account_change'), () => showAlgorandAccounts(mod.accounts()));
+    if (mod.accounts().length) menuButton(list, `${t('disconnect')} · ${mod.currentWallet()}`, async () => {
+      closeWalletMenu(); await mod.disconnect(); updateWalletSummary();
+    });
+  }
+  menuButton(list, t('wallet_refresh'), () => connectWallet(onlyAlgorand));
+  menuButton(list, t('wallet_close'), closeWalletMenu);
+}
+
+async function useAlgorand(choice) {
+  closeWalletMenu(); walletConnecting = true; setStatus(t('wallet_pending'));
+  try {
+    // Configuration and module were loaded before this click, preserving popup activation for Pera.
+    const authorized = await algoWallet.connect(algoConfig, choice);
+    if (authorized.length > 1) showAlgorandAccounts(authorized);
+    updateWalletSummary(); setStatus('');
+  } catch (err) { setStatus(err.message, true); }
+  finally { walletConnecting = false; }
+}
+
+function showAlgorandAccounts(accounts) {
+  const list = document.getElementById('walletList');
+  ++walletMenuVersion; list.replaceChildren(); list.classList.add('show');
+  menuTitle(list, t('account_choose'));
+  for (const account of accounts) {
+    const button = menuButton(list, `${account.name || 'Algorand'} · ${shortAddress(account.address)}`, () => {
+      algoWallet.selectAccount(account.address); closeWalletMenu(); updateWalletSummary();
+    });
+    button.title = account.address;
+  }
+  menuButton(list, t('wallet_close'), closeWalletMenu);
+}
+
+function removeEvmListeners() {
+  activeEvmProvider?.removeListener?.('chainChanged', onWalletChainChanged);
+  activeEvmProvider?.removeListener?.('accountsChanged', onWalletAccountsChanged);
+  activeEvmProvider?.removeListener?.('disconnect', disconnectWallet);
+}
+function disconnectWallet() {
+  removeEvmListeners(); activeEvmProvider = null; evmWalletName = '';
+  signer = null; userAddress = null; connectedChainId = null;
+  closeWalletMenu(); updateWalletSummary(); fillFromSelect(); clearPreview(); setStatus('');
 }
 
 async function useProvider(rawProvider, name) {
-  // Fuerza a que vuelva a salir el selector de cuentas de la wallet, en vez
-  // de devolver en silencio la misma que ya estaba autorizada de antes.
-  try { await rawProvider.request({ method: 'wallet_requestPermissions', params: [{ eth_accounts: {} }] }); }
-  catch { /* la wallet no soporta este método, o el usuario canceló -- seguimos igualmente */ }
-  const provider = new ethers.BrowserProvider(rawProvider);
-  await provider.send('eth_requestAccounts', []);
-  signer = await provider.getSigner();
-  userAddress = await signer.getAddress();
-  document.getElementById('walletBtnText').textContent = userAddress.slice(0,6) + '…' + userAddress.slice(-4);
-
-  connectedChainId = Number((await provider.getNetwork()).chainId);
-  fillFromSelect();
-  rawProvider.removeListener?.('chainChanged', onWalletChainChanged);
-  rawProvider.on?.('chainChanged', onWalletChainChanged);
-
-  scheduleFetchPreview();
+  walletConnecting = true; closeWalletMenu(); setStatus(t('wallet_pending'));
+  try {
+    try { await rawProvider.request({ method: 'wallet_requestPermissions', params: [{ eth_accounts: {} }] }); }
+    catch (err) {
+      // Unsupported method is safe to skip. A rejected request must stop here.
+      if (![4200, -32601].includes(Number(err.code))) throw err;
+    }
+    const provider = new ethers.BrowserProvider(rawProvider, 'any');
+    await provider.send('eth_requestAccounts', []);
+    const nextSigner = await provider.getSigner();
+    const address = await nextSigner.getAddress();
+    const chain = Number((await provider.getNetwork()).chainId);
+    removeEvmListeners();
+    activeEvmProvider = rawProvider; signer = nextSigner; userAddress = address;
+    evmWalletName = name; connectedChainId = chain;
+    rawProvider.on?.('chainChanged', onWalletChainChanged);
+    rawProvider.on?.('accountsChanged', onWalletAccountsChanged);
+    rawProvider.on?.('disconnect', disconnectWallet);
+    updateWalletSummary(); fillFromSelect(); clearPreview(); scheduleFetchPreview(); setStatus('');
+  } catch (err) { setStatus(err.message, true); }
+  finally { walletConnecting = false; }
 }
 
 function onWalletChainChanged(chainIdHex) {
-  connectedChainId = parseInt(chainIdHex, 16);
-  fillFromSelect();
+  connectedChainId = Number(chainIdHex);
+  fillFromSelect(); clearPreview();
+  if (!swapInProgress) scheduleFetchPreview();
+}
+async function onWalletAccountsChanged(accounts) {
+  if (!accounts?.length) { disconnectWallet(); return; }
+  const raw = activeEvmProvider;
   clearPreview();
+  try {
+    const nextSigner = await new ethers.BrowserProvider(raw, 'any').getSigner(accounts[0]);
+    if (raw !== activeEvmProvider) return;
+    signer = nextSigner; userAddress = await nextSigner.getAddress(); updateWalletSummary();
+    if (!swapInProgress) scheduleFetchPreview();
+  } catch (err) { disconnectWallet(); setStatus(err.message, true); }
 }
 
 // ---- Vista previa gratis, en vivo -------------------------------------
-let previewDebounce = null, previewToken = 0;
 function scheduleFetchPreview() {
   clearTimeout(previewDebounce);
   previewDebounce = setTimeout(fetchPreview, 450);
 }
 
 async function fetchPreview() {
+  if (swapInProgress || walletConnecting) return;
   const rawAmountStr = document.getElementById('fromAmount').value;
   if (!rawAmountStr || Number(rawAmountStr) <= 0) { clearPreview(); return; }
   if (!userAddress) { clearPreview(); setStatus(t('connect_to_preview'), true); return; }
@@ -505,7 +676,7 @@ async function fetchPreview() {
   const cta = document.getElementById('cta');
   try {
     const resp = await fetch(`${BACKEND_URL}/quote?${params}`);
-    if (myToken !== previewToken) return;
+    if (myToken !== previewToken || swapInProgress) return;
     if (!resp.ok) throw new Error(t('err_unexpected', resp.status));
     const data = await resp.json();
     const toAmountHuman = ethers.formatUnits(data.to_amount || '0', to.decimals);
@@ -519,7 +690,7 @@ async function fetchPreview() {
     cta.disabled = false; document.getElementById('ctaText').textContent = t('cta_execute'); cta.className = 'cta';
     setStatus('');
   } catch (err) {
-    if (myToken !== previewToken) return;
+    if (myToken !== previewToken || swapInProgress) return;
     clearPreview();
     setStatus(err.message, true);
   }
@@ -528,37 +699,41 @@ async function fetchPreview() {
 // ---- Execute Swap: conecta ambas wallets primero, luego cobra y ejecuta --
 async function executeSwap() {
   const cta = document.getElementById('cta');
-  if (!lastPreview || cta.disabled) return;
+  if (!lastPreview || cta.disabled || swapInProgress || walletConnecting) return;
+  if (!signer) { await connectWallet(); return; }
+  if (!algoWallet?.currentPayer()) {
+    await connectWallet(true); setStatus(t('algo_choose')); return;
+  }
+  const trade = { ...lastPreview };
+  const swapAddress = userAddress;
+  const swapProvider = activeEvmProvider;
+  let swapSigner = signer;
+  swapInProgress = true;
+  closeWalletMenu();
+  document.getElementById('walletBtn').disabled = true;
   cta.disabled = true; cta.className = 'cta pending'; setStatus('');
 
-  // 1) Wallet EVM (si hace falta) -- lo primero, antes de tocar la red.
-  if (!signer) {
-    document.getElementById('ctaText').textContent = t('cta_connecting');
-    await connectWallet();
-    if (!signer) { cta.disabled = false; document.getElementById('ctaText').textContent = t('cta_execute'); cta.className = 'cta error'; return; }
-  }
-
-  // 2) Wallet Algorand (Pera) -- también antes de cualquier petición lenta,
-  // para no perder la "activación" del clic y que el navegador no bloquee su ventana.
+  // Both wallets were explicitly selected before starting the payment.
   let payer, wallet;
   try {
     document.getElementById('ctaText').textContent = t('cta_connecting');
-    const [cfgBackend, mod] = await Promise.all([backendConfigPromise, walletModulePromise]);
-    if (!cfgBackend || !mod) throw new Error(t('err_unexpected', 0));
-    wallet = mod;
-    payer = await wallet.connect({
-      network: cfgBackend.network.includes('testnet') ? 'testnet' : 'mainnet',
-      network_caip: cfgBackend.network, asset_id: cfgBackend.asset,
-      pay_to: cfgBackend.pay_to, price_atomic: cfgBackend.price_atomic,
-      api_origin: new URL(BACKEND_URL).origin,
-    });
+    wallet = algoWallet;
+    payer = wallet.currentPayer();
+    // Switch the EVM network before charging the Algorand fee.
+    try {
+      await swapSigner.provider.send('wallet_switchEthereumChain', [{ chainId: '0x' + Number(trade.fromChain).toString(16) }]);
+      swapSigner = await swapSigner.provider.getSigner(swapAddress);
+      const addresses = await swapProvider.request({ method: 'eth_accounts' });
+      const chain = Number(await swapProvider.request({ method: 'eth_chainId' }));
+      if (activeEvmProvider !== swapProvider || addresses[0]?.toLowerCase() !== swapAddress.toLowerCase() || chain !== Number(trade.fromChain)) throw new Error();
+    } catch { throw new Error(t('err_wrong_chain')); }
 
     // Aviso temprano si la cuenta de Algorand no tiene USDC activado, antes
     // de gastar el resto del flujo. Si la comprobación en sí falla (red...),
     // seguimos sin bloquear -- es un aviso, no una verificación de seguridad.
     try {
-      const info = await fetch(`https://mainnet-api.algonode.cloud/v2/accounts/${payer}`).then(r => r.json());
-      const hasUsdc = (info.assets || []).some(a => a['asset-id'] === 31566704);
+      const info = await fetch(`https://${algoConfig.network}-api.algonode.cloud/v2/accounts/${payer}`).then(r => r.json());
+      const hasUsdc = (info.assets || []).some(a => String(a['asset-id']) === algoConfig.asset_id);
       if (!hasUsdc) throw new Error(t('err_no_usdc_optin'));
     } catch (checkErr) {
       if (checkErr.message === t('err_no_usdc_optin')) throw checkErr;
@@ -567,18 +742,19 @@ async function executeSwap() {
     console.error(err);
     setStatus(err.message, true);
     cta.disabled = false; document.getElementById('ctaText').textContent = t('cta_retry'); cta.className = 'cta error';
+    swapInProgress = false; document.getElementById('walletBtn').disabled = false;
     return;
   }
 
   // 3) Ahora sí, las peticiones de red: cobrar y ejecutar.
   document.getElementById('ctaText').textContent = t('cta_paying');
   try {
-    const fromAddressParam = userAddress;
-    const toAddressParam = userAddress;
+    const fromAddressParam = swapAddress;
+    const toAddressParam = swapAddress;
     const params = new URLSearchParams({
-      from_chain: lastPreview.fromChain, from_token: lastPreview.fromToken,
-      to_chain: lastPreview.toChain, to_token: lastPreview.toToken,
-      from_amount: lastPreview.fromAmount, from_address: fromAddressParam, to_address: toAddressParam,
+      from_chain: trade.fromChain, from_token: trade.fromToken,
+      to_chain: trade.toChain, to_token: trade.toToken,
+      from_amount: trade.fromAmount, from_address: fromAddressParam, to_address: toAddressParam,
     });
 
     let resp = await fetch(`${BACKEND_URL}/execute?${params}`);
@@ -592,6 +768,13 @@ async function executeSwap() {
     const quoteToSign = await prep.json();
     const paymentHeader = await wallet.sign(quoteToSign);
 
+    // A wallet change while confirming the Algorand signature must not trigger a charge.
+    const payingAccounts = await swapProvider.request({ method: 'eth_accounts' });
+    const payingChain = Number(await swapProvider.request({ method: 'eth_chainId' }));
+    if (activeEvmProvider !== swapProvider || payingAccounts[0]?.toLowerCase() !== swapAddress.toLowerCase() || payingChain !== Number(trade.fromChain)) {
+      throw new Error(t('err_wrong_chain'));
+    }
+
     resp = await fetch(`${BACKEND_URL}/execute?${params}`, { headers: { 'PAYMENT-SIGNATURE': paymentHeader } });
     if (!resp.ok) {
       const body = await resp.json().catch(() => ({}));
@@ -603,31 +786,27 @@ async function executeSwap() {
     const tx = full.transaction_request;
     if (!tx) throw new Error(t('err_no_tx'));
 
-    // Sin esto, la wallet puede seguir en la red donde estuviera antes y
-    // firmar el contrato equivocado -- por eso fallaba igual en cualquier cadena.
-    const targetChainHex = '0x' + Number(lastPreview.fromChain).toString(16);
-    try {
-      await signer.provider.send('wallet_switchEthereumChain', [{ chainId: targetChainHex }]);
-      signer = await signer.provider.getSigner();
-    } catch {
+    const currentAccounts = await swapProvider.request({ method: 'eth_accounts' });
+    const currentChain = Number(await swapProvider.request({ method: 'eth_chainId' }));
+    if (activeEvmProvider !== swapProvider || currentAccounts[0]?.toLowerCase() !== swapAddress.toLowerCase() || currentChain !== Number(trade.fromChain)) {
       throw new Error(t('err_wrong_chain'));
     }
 
-    if (lastPreview.fromToken !== NATIVE) {
+    if (trade.fromToken !== NATIVE) {
       const spender = full.approval_address || tx.to;
-      const c = new ethers.Contract(lastPreview.fromToken, [
+      const c = new ethers.Contract(trade.fromToken, [
         'function allowance(address,address) view returns (uint256)',
         'function approve(address,uint256) returns (bool)',
-      ], signer);
-      const needed = BigInt(lastPreview.fromAmount);
-      const current = await c.allowance(userAddress, spender);
+      ], swapSigner);
+      const needed = BigInt(trade.fromAmount);
+      const current = await c.allowance(swapAddress, spender);
       if (current < needed) {
         setStatus(t('approving'));
         const approveTx = await c.approve(spender, needed);
         await approveTx.wait();
       }
     }
-    const sentTx = await signer.sendTransaction({ to: tx.to, data: tx.data, value: tx.value, gasLimit: tx.gasLimit });
+    const sentTx = await swapSigner.sendTransaction({ to: tx.to, data: tx.data, value: tx.value, gasLimit: tx.gasLimit });
     setStatus(t('sent_waiting', sentTx.hash));
     await sentTx.wait();
     document.getElementById('ctaText').textContent = t('cta_done'); cta.className = 'cta';
@@ -636,6 +815,8 @@ async function executeSwap() {
     console.error(err);
     setStatus(err.message, true);
     cta.disabled = false; document.getElementById('ctaText').textContent = t('cta_retry'); cta.className = 'cta error';
+  } finally {
+    swapInProgress = false; document.getElementById('walletBtn').disabled = false;
   }
 }
 </script>
